@@ -1,0 +1,74 @@
+# Rectified Flow Test Configuration
+# General settings
+name: test_RectifiedFlow_x4
+model_type: RectifiedFlowModel
+scale: 4
+num_gpu: 1
+manual_seed: 10
+
+# Network structures
+network_g:
+  type: RectifiedFlowUnet
+  dim: 64
+  init_dim: 64
+  channels: 3
+  dim_mults: [1, 2, 4, 8]
+  mean_variance_net: false
+  learned_sinusoidal_cond: false
+  random_fourier_features: false
+  dropout: 0.0
+  attn_dim_head: 32
+  attn_heads: 4
+  num_residual_streams: 2
+
+# Rectified Flow specific settings
+rectified_flow:
+  time_cond_kwarg: 'times'
+  predict: 'flow'
+  mean_variance_net: false
+  noise_schedule: 'cosmap'
+  odeint_kwargs:
+    atol: 1e-5
+    rtol: 1e-5
+    method: 'midpoint'
+  clip_during_sampling: false
+  clip_flow_during_sampling: null
+  clip_values: [-1.0, 1.0]
+  clip_flow_values: [-3.0, 3.0]
+  use_consistency: false
+  # Sampling settings
+  sample_steps: 16
+  sample_temperature: 1.0
+
+# Path
+path:
+  pretrain_network_g: experiments/RectifiedFlow_x4_DIV2K_300k/models/net_g_latest.pth
+  strict_load_g: true
+
+# Dataset settings
+datasets:
+  test_Set5:
+    name: Set5
+    type: PairedImageDataset
+    dataroot_gt: datasets/Set5/GTmod12
+    dataroot_lq: datasets/Set5/LRbicx4
+    io_backend:
+      type: disk
+
+# Validation settings
+val:
+  suffix: ~
+  save_img: true
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 4
+      test_y_channel: false
+
+
+
