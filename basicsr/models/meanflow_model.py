@@ -12,15 +12,15 @@ from basicsr.losses import build_loss
 from basicsr.metrics import calculate_metric
 from basicsr.utils import get_root_logger, imwrite, tensor2img
 from basicsr.utils.registry import MODEL_REGISTRY
-from .base_model import BaseModel
+from .flow_model import FlowModel
 
 
 @MODEL_REGISTRY.register()
-class meanflow_Model(BaseModel):
+class MeanFlowModel(FlowModel):
     """Base SR model for single image super-resolution."""
 
     def __init__(self, opt):
-        super(meanflow_Model, self).__init__(opt)
+        super(MeanFlowModel, self).__init__(opt)
 
         # define network
         self.net_g = build_network(opt['network_g'])
