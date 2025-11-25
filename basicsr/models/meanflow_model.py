@@ -33,8 +33,8 @@ class MeanFlowModel(FlowModel):
             param_key = self.opt['path'].get('param_key_g', 'params')
             self.load_network(self.net_g, load_path, self.opt['path'].get('strict_load_g', True), param_key)
 
-        if self.is_train:
-            self.init_training_settings()
+        #if self.is_train:
+           # self.init_training_settings()
 
     def init_training_settings(self):
         self.net_g.train()
