@@ -1,6 +1,6 @@
 """
-Rectified Flow Unet Architecture
-Based on the rectified flow implementation
+Flow UNet Architecture
+Unified UNet architecture for RectifiedFlow and FlowMatching
 """
 from __future__ import annotations
 
@@ -353,7 +353,7 @@ class Attention(Module):
 # Main Unet
 
 @ARCH_REGISTRY.register()
-class RectifiedFlowUnet(Module):
+class FlowUNet(Module):
     def __init__(
         self,
         dim,

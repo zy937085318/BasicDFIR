@@ -37,7 +37,7 @@ datasets:
 
 # Network structures
 network_g:
-  type: RectifiedFlowUnet
+  type: FlowUNet
   dim: 64
   init_dim: 64
   channels: 3
