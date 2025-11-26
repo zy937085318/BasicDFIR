@@ -143,10 +143,13 @@ if __name__ == '__main__':
         ext_modules = []
         setup_kwargs = dict()
 
-    write_version_py()
+    # write_version_py()  # Disabled: version.py is no longer used
+    # Read version directly from VERSION file
+    with open('VERSION', 'r') as f:
+        version = f.read().strip()
     setup(
         name='basicsr',
-        version=get_version(),
+        version=version,
         description='Open Source Image and Video Super-Resolution Toolbox',
         long_description=readme(),
         long_description_content_type='text/markdown',

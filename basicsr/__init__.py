@@ -9,4 +9,6 @@ from .ops import *
 from .test import *
 from .train import *
 from .utils import *
-from .version import __gitsha__, __version__
+# Version info (no longer using version.py)
+__version__ = '1.4.2'
+__gitsha__ = 'unknown'

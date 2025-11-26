@@ -8,8 +8,13 @@ pyyaml
 requests
 scikit-image
 scipy
-tb-nightly
+tensorboard
 torch>=1.7
 torchvision
 tqdm
 yapf
+# Rectified Flow dependencies
+torchdiffeq>=0.2.0
+einops>=0.6.0
+# Optional: hyper-connections (if available)
+# hyper-connections

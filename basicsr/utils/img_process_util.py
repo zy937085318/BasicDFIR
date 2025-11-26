@@ -1,4 +1,10 @@
-import cv2
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    cv2 = None
+
 import numpy as np
 import torch
 from torch.nn import functional as F
@@ -47,6 +53,9 @@ def usm_sharp(img, weight=0.5, radius=50, threshold=10):
         radius (float): Kernel size of Gaussian blur. Default: 50.
         threshold (int):
     """
+    if not CV2_AVAILABLE:
+        raise ImportError("opencv-python is required for usm_sharp. Install it with: pip install opencv-python")
+
     if radius % 2 == 0:
         radius += 1
     blur = cv2.GaussianBlur(img, (radius, radius), 0)
@@ -64,6 +73,9 @@ class USMSharp(torch.nn.Module):
 
     def __init__(self, radius=50, sigma=0):
         super(USMSharp, self).__init__()
+        if not CV2_AVAILABLE:
+            raise ImportError("opencv-python is required for USMSharp. Install it with: pip install opencv-python")
+
         if radius % 2 == 0:
             radius += 1
         self.radius = radius

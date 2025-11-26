@@ -1,6 +1,7 @@
 import datetime
 import logging
 import math
+import os
 import time
 import torch
 from os import path as osp
@@ -104,6 +105,11 @@ def train_pipeline(root_path):
         if opt['logger'].get('use_tb_logger') and 'debug' not in opt['name'] and opt['rank'] == 0:
             mkdir_and_rename(osp.join(opt['root_path'], 'tb_logger', opt['name']))
 
+    # Create result directory for training comparison images
+    result_dir = osp.join(opt['path']['experiments_root'], 'result')
+    if opt['rank'] == 0:
+        os.makedirs(result_dir, exist_ok=True)
+
     # copy the yml file to the experiment root
     copy_opt_file(args.opt, opt['path']['experiments_root'])
 
@@ -179,6 +185,27 @@ def train_pipeline(root_path):
                 log_vars.update({'time': iter_timer.get_avg_time(), 'data_time': data_timer.get_avg_time()})
                 log_vars.update(model.get_current_log())
                 msg_logger(log_vars)
+
+            # Save training result comparison images every 100 iterations
+            if current_iter % 100 == 0 and opt['rank'] == 0:
+                # Set network to eval mode
+                if hasattr(model, 'net_g'):
+                    model.net_g.eval()
+                with torch.no_grad():
+                    # Get a sample from current batch (use a copy to avoid affecting training)
+                    sample_data = {}
+                    sample_data['lq'] = train_data['lq'][:1].clone()  # Take first image
+                    if 'gt' in train_data:
+                        sample_data['gt'] = train_data['gt'][:1].clone()
+                    model.feed_data(sample_data)
+                    # Use test() method which handles sampling correctly
+                    # This will use GT shape if available and start from upsampled LQ
+                    model.test()
+                    if hasattr(model, 'save_training_results'):
+                        model.save_training_results(current_iter, result_dir)
+                # Set network back to train mode
+                if hasattr(model, 'net_g'):
+                    model.net_g.train()
 
             # save models and training states
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
