@@ -105,8 +105,13 @@ def train_pipeline(root_path):
         if opt['logger'].get('use_tb_logger') and 'debug' not in opt['name'] and opt['rank'] == 0:
             mkdir_and_rename(osp.join(opt['root_path'], 'tb_logger', opt['name']))
 
-    # Create result directory for training comparison images
-    result_dir = osp.join(opt['path']['experiments_root'], 'result')
+    # Create result directory for training comparison images with training info
+    # Format: result_<model_name>_<dataset_name>_<scale>
+    model_name = opt.get('name', 'unknown')
+    dataset_name = opt['datasets']['train'].get('name', 'unknown')
+    scale = opt.get('scale', 4)
+    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}"
+    result_dir = osp.join(opt['path']['experiments_root'], result_dir_name)
     if opt['rank'] == 0:
         os.makedirs(result_dir, exist_ok=True)
 
