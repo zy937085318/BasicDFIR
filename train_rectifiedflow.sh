@@ -1,13 +1,5 @@
 #!/bin/bash
 
-# Rectified Flow Training Script
-# Usage:
-#   Foreground: ./train_rectifiedflow.sh [config_file]
-#   Background: ./train_rectifiedflow.sh [config_file] --background
-#   Background: nohup ./train_rectifiedflow.sh [config_file] &
-# Example: ./train_rectifiedflow.sh options/train/RectifiedFlow/train_RectifiedFlow_x4.yml
-
-# Default configuration file
 DEFAULT_CONFIG="options/train/RectifiedFlow/train_RectifiedFlow_x4.yml"
 
 # Parse arguments
