@@ -42,13 +42,14 @@ try:
     HYPER_CONNECTIONS_AVAILABLE = True
 except ImportError:
     HYPER_CONNECTIONS_AVAILABLE = False
-    # Simple fallback
-    class Residual:
+    # Simple fallback - must inherit from nn.Module to be used in ModuleList
+    class Residual(nn.Module):
         def __init__(self, branch, residual_transform=None):
+            super().__init__()
             self.branch = branch
             self.residual_transform = residual_transform
 
-        def __call__(self, x, *args, **kwargs):
+        def forward(self, x, *args, **kwargs):
             out = self.branch(x, *args, **kwargs)
             if self.residual_transform:
                 x = self.residual_transform(x)
