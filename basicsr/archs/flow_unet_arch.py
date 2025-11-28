@@ -552,3 +552,4 @@ class FlowUNet(Module):
         variance = log_var.exp()  # variance needs to be positive
         return stack((mean, variance))
 
+
