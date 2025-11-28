@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Rectified Flow Training Script
-# Usage: ./train.sh [config_file]
-# Example: ./train.sh options/train/RectifiedFlow/train_RectifiedFlow_x4.yml
+# Usage: ./train_rectifiedflow.sh [config_file]
+# Example: ./train_rectifiedflow.sh options/train/RectifiedFlow/train_RectifiedFlow_x4.yml
 
 # Default configuration file
 DEFAULT_CONFIG="options/train/RectifiedFlow/train_RectifiedFlow_x4.yml"
