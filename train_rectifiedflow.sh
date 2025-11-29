@@ -113,7 +113,7 @@ extract_best_metrics() {
     # Display summary
     cat "$summary_file"
 }
-
+#1
 echo "=========================================="
 echo "Starting Rectified Flow Training"
 echo "=========================================="
