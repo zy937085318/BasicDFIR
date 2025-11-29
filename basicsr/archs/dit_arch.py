@@ -179,7 +179,8 @@ class DiT(nn.Module):
         # Zero-out output layers:
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
-        nn.init.constant_(self.final_layer.linear.weight, 0)
+        nn.init.normal_(self.final_layer.linear.weight, mean=0.0, std=1e-5)
+        #nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
     def unpatchify(self, x):

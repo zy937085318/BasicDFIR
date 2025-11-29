@@ -130,10 +130,53 @@ class MeanFlowModel(FlowModel):
             self.z_t = alpha_t * self.gt + sigma_t * lq_up
             self.v_t = d_alpha_t * self.gt + d_sigma_t * lq_up
 
-
-
-
     def optimize_parameters(self, current_iter):
+        '''
+        # ---【诊断代码开始】---
+        if current_iter == 1:
+            print("\n" + "="*30 + " [DIAGNOSIS REPORT] " + "="*30)
+            for name, p in self.net_g.named_parameters():
+                if 'x_embedder' in name:
+                    status = "✅ Trainable (True)" if p.requires_grad else "❌ Frozen (False)"
+                    print(f"Param: {name} -> {status}")
+                    break
+            print("="*80 + "\n")
+        # ---【诊断代码结束】---
+
+        #self.optimizer_g.zero_grad()
+        self.optimizer_g.zero_grad()
+
+        # --- 临时测试：Simple MSE Loss ---
+        # 我们不求导数了，直接让网络预测 target_v
+
+        # 1. 构造时间
+        batch_size = self.z_t.shape[0]
+        t_curr = self.t.view(batch_size, 1, 1, 1)
+        r_curr = self.r.view(batch_size, 1, 1, 1)  # 或者 r=t
+
+        # 2. 网络前向传播 (不包含 JVP)
+        # 你的 arch 接受 tuple: (x, t, r)
+        # 这里的 z_t 和 target_v 都是 feed_data 算好的
+        u = self.net_g((self.z_t, self.t, self.r))
+
+        # 3. 简单暴力的 Loss: 预测值 u vs 真值 target_v
+        loss = torch.nn.functional.mse_loss(u, self.v_t)
+
+        # 4. 反向传播
+        loss.backward()
+
+        # 【调试打印】看看现在第一层有梯度了吗？
+        if current_iter % 100 == 0:
+            for name, param in self.net_g.named_parameters():
+                if 'x_embedder' in name and 'weight' in name:
+                    print(f"SimpleMSE Debug - Layer: {name} | Grad: {param.grad.abs().mean().item():.8f}")
+                    break
+
+        self.optimizer_g.step()
+
+        self.log_dict = OrderedDict()
+        self.log_dict['l_flow'] = loss.item()
+        '''
         self.optimizer_g.zero_grad()
         #inputs = (self.z_t, self.t, self.r)
         #model_partial = partial(self.net_g, y=None)
@@ -144,12 +187,6 @@ class MeanFlowModel(FlowModel):
             (self.v_t, torch.ones_like(self.t), torch.zeros_like(self.r)),
         )
 
-        '''
-        if self.create_graph:
-            u, dudt = self.jvp_fn(*jvp_args, create_graph=True)
-        else:
-            u, dudt = self.jvp_fn(*jvp_args)
-        '''
         u, dudt = torch.autograd.functional.jvp(*jvp_args, create_graph=True)
         t_map = self.t.view(-1, 1, 1, 1)
         r_map = self.r.view(-1, 1, 1, 1)
@@ -163,45 +200,31 @@ class MeanFlowModel(FlowModel):
         w = 1.0 / (delta_sq + 1e-3).pow(0.5)
         loss = (w.detach() * delta_sq).mean()
         loss.backward()
+        if current_iter % 100 == 0:
+            print(f"\n[DEBUG Iter  {current_iter}]---------------------")
+            for name,param in self.net_g.named_parameters():
+                if param.grad is None:
+                    continue
+                if 'x_embedder' in name and 'weight' in name:
+                    grad_mean = param.grad.abs().mean().item()
+                    weight_mean = param.data.abs().mean().item()
+                    print(f"Layer: {name}")
+                    print(f"  -> Weight Mean: {weight_mean:.8f}")  # 权重大小
+                    print(f"  -> Grad Mean:   {grad_mean:.8f}")  # 梯度大小 (如果是0，说明没学)
+                if 'final_layer' in name and 'linear.weight' in name:
+                    grad_mean = param.grad.abs().mean().item()
+                    weight_mean = param.data.abs().mean().item()
+                    print(f"Layer: {name}")
+                    print(f"  -> Weight Mean: {weight_mean:.8f}")
+                    print(f"  -> Grad Mean:   {grad_mean:.8f}")
+                    break  # 打印完这两个就够了
         self.optimizer_g.step()
         self.log_dict = OrderedDict()
         self.log_dict['l_flow'] = loss.item()
-        '''
-        self.output = self.net_g(self.lq)
 
-        l_total = 0
-        loss_dict = OrderedDict()
-        # pixel loss
-        if self.cri_pix:
-            l_pix = self.cri_pix(self.output, self.gt)
-            l_total += l_pix
-            loss_dict['l_pix'] = l_pix
-        # perceptual loss
-        if self.cri_perceptual:
-            l_percep, l_style = self.cri_perceptual(self.output, self.gt)
-            if l_percep is not None:
-                l_total += l_percep
-                loss_dict['l_percep'] = l_percep
-            if l_style is not None:
-                l_total += l_style
-                loss_dict['l_style'] = l_style
-
-        l_total.backward()
-        self.optimizer_g.step()
-
-        self.log_dict = self.reduce_loss_dict(loss_dict)
-
-        if self.ema_decay > 0:
-            self.model_ema(decay=self.ema_decay)
-        '''
 
     def test(self):
         # 1. 选择模型 (优先用 EMA)
-        '''
-        print(f"DEBUG: LQ Shape: {self.lq.shape}")
-        if hasattr(self, 'gt'):
-            print(f"DEBUG: GT Shape: {self.gt.shape}")
-        '''
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             net = self.net_g_ema
