@@ -11,8 +11,10 @@ datasets:
   train:
     name: DIV2K
     type: PairedImageDataset
-    dataroot_gt: datasets/Set14/GTmod12
-    dataroot_lq: datasets/Set14/LRbicx4
+#    dataroot_gt: datasets/Set14/GTmod12
+#    dataroot_lq: datasets/Set14/LRbicx4
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_LR_bicubic/X4
     filename_tmpl: '{}'
     io_backend:
       type: disk
@@ -30,14 +32,14 @@ datasets:
   val:
     name: Set5
     type: PairedImageDataset
-    dataroot_gt: datasets/Set5/GTmod12
-    dataroot_lq: datasets/Set5/LRbicx4
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Set5/GTmod12
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Set5/LRbicx4
     io_backend:
       type: disk
 
 # Network structures
 network_g:
-  type: RectifiedFlowUnet
+  type: FlowUNet
   dim: 64
   init_dim: 64
   channels: 3
@@ -92,7 +94,7 @@ train:
     milestones: [200000]
     gamma: 0.5
 
-  total_iter: 1000
+  total_iter: 200000
   warmup_iter: -1  # no warm up
 
   # Losses
@@ -111,7 +113,7 @@ train:
 
 # Validation settings
 val:
-  val_freq: !!float 5e3
+  val_freq: !!float 1e3  # Validate every 1000 iterations
   save_img: true
 
   metrics:

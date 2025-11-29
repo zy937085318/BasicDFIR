@@ -226,8 +226,22 @@ def paired_paths_from_folder(folders, keys, filename_tmpl):
     for gt_path in gt_paths:
         basename, ext = osp.splitext(osp.basename(gt_path))
         input_name = f'{filename_tmpl.format(basename)}{ext}'
+
+        # If exact match not found, try common DIV2K naming patterns (e.g., 0001x4.png)
+        if input_name not in input_paths:
+            # Try with x2, x4, x8 suffixes (common in DIV2K dataset)
+            found = False
+            for suffix in ['x2', 'x4', 'x8']:
+                alt_name = f'{filename_tmpl.format(basename)}{suffix}{ext}'
+                if alt_name in input_paths:
+                    input_name = alt_name
+                    found = True
+                    break
+            if not found:
+                raise AssertionError(f'{input_name} (or variants with x2/x4/x8 suffix) is not in {input_key}_paths. '
+                                   f'Available files: {input_paths[:5]}... (showing first 5)')
+
         input_path = osp.join(input_folder, input_name)
-        assert input_name in input_paths, f'{input_name} is not in {input_key}_paths.'
         gt_path = osp.join(gt_folder, gt_path)
         paths.append(dict([(f'{input_key}_path', input_path), (f'{gt_key}_path', gt_path)]))
     return paths

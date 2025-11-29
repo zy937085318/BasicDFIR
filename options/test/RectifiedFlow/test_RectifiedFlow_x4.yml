@@ -8,7 +8,7 @@ manual_seed: 10
 
 # Network structures
 network_g:
-  type: RectifiedFlowUnet
+  type: FlowUNet
   dim: 64
   init_dim: 64
   channels: 3
@@ -69,6 +69,7 @@ val:
       type: calculate_ssim
       crop_border: 4
       test_y_channel: false
+
 
 
 

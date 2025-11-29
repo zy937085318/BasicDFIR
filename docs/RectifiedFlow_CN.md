@@ -41,7 +41,7 @@ python -m basicsr.test -opt options/test/RectifiedFlow/test_RectifiedFlow_x4.yml
 
 ```yaml
 network_g:
-  type: RectifiedFlowUnet
+  type: FlowUNet
   dim: 64                    # 基础维度
   init_dim: 64              # 初始维度
   channels: 3               # 输入通道数
@@ -140,7 +140,7 @@ Rectified Flow 使用流匹配方法，通过 ODE 求解器从噪声生成高分
 # 使用默认配置训练 4x 超分辨率模型
 model_type: RectifiedFlowModel
 network_g:
-  type: RectifiedFlowUnet
+  type: FlowUNet
   dim: 64
   channels: 3
 rectified_flow:
@@ -182,6 +182,7 @@ pip install einops torchdiffeq
 - 减小 batch size
 - 减小网络维度 `dim`
 - 使用梯度累积
+
 
 
 

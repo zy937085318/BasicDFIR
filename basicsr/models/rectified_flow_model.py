@@ -45,7 +45,7 @@ from basicsr.losses import build_loss
 from basicsr.metrics import calculate_metric
 from basicsr.utils import get_root_logger, imwrite, tensor2img
 from basicsr.utils.registry import MODEL_REGISTRY
-from .base_model import BaseModel
+from .flow_model import FlowModel
 
 
 # helpers
@@ -118,22 +118,17 @@ class EMA:
 
 
 @MODEL_REGISTRY.register()
-class RectifiedFlowModel(BaseModel):
+class RectifiedFlowModel(FlowModel):
     """Rectified Flow Model for Super Resolution"""
 
     def __init__(self, opt):
-        super(RectifiedFlowModel, self).__init__(opt)
-
-        # Get model configuration
+        # Get model configuration before calling parent init
         model_opt = opt.get('rectified_flow', {})
 
-        # Build network
-        network_opt = opt['network_g'].copy()
-        self.net_g = build_network(network_opt)
-        self.net_g = self.model_to_device(self.net_g)
-        self.print_network(self.net_g)
+        # Call parent FlowModel __init__ which will build network
+        super(RectifiedFlowModel, self).__init__(opt)
 
-        # Rectified Flow specific settings
+        # Rectified Flow specific settings (set after parent init)
         self.time_cond_kwarg = model_opt.get('time_cond_kwarg', 'times')
         self.predict = model_opt.get('predict', 'flow')  # 'flow' or 'noise'
         self.mean_variance_net = model_opt.get('mean_variance_net', False)
@@ -188,14 +183,8 @@ class RectifiedFlowModel(BaseModel):
                 **ema_kwargs
             )
 
-        # Load pretrained models
-        load_path = self.opt['path'].get('pretrain_network_g', None)
-        if load_path is not None:
-            param_key = self.opt['path'].get('param_key_g', 'params')
-            self.load_network(self.net_g, load_path, self.opt['path'].get('strict_load_g', True), param_key)
-
-        if self.is_train:
-            self.init_training_settings()
+        # Note: init_training_settings is already called by parent FlowModel.__init__
+        # and will use this class's overridden method
 
     def init_training_settings(self):
         self.net_g.train()
@@ -300,7 +289,7 @@ class RectifiedFlowModel(BaseModel):
         """Forward pass for rectified flow training"""
         batch, *data_shape = data.shape
 
-        # Normalize data
+        # Normalize data (LQ image)
         data = self.data_normalize_fn(data)
         self.data_shape = default(self.data_shape, data_shape)
 
@@ -312,23 +301,14 @@ class RectifiedFlowModel(BaseModel):
         target_shape = target_data.shape
         target_h, target_w = target_shape[-2], target_shape[-1]
 
-        # Create x_0 (blurred version)
-        # If GT is available, create x_0 from GT by downscaling and upscaling
-        # Otherwise, create x_0 from LQ
+        # Create x_0 from dataset LQ image (low-resolution image)
+        # For super-resolution: directly use LQ image upsampled to target size
         if gt is not None:
-            # For super-resolution: create blurred version from GT
-            # Downscale GT by scale factor, then upscale back
-            scale = self.opt.get('scale', 4)
-            downscaled = F.interpolate(target_data, scale_factor=1.0/scale, mode='bilinear', align_corners=False)
-            x_0 = F.interpolate(downscaled, size=(target_h, target_w), mode='bilinear', align_corners=False)
+            # Upsample LQ to GT size
+            x_0 = F.interpolate(data, size=(target_h, target_w), mode='bilinear', align_corners=False)
         else:
-            # If no GT, create x_0 from LQ by downscaling and upscaling
-            original_shape = data.shape
-            # Downscale by 4x
-            downscaled = F.interpolate(data, scale_factor=0.25, mode='bilinear', align_corners=False)
-            # Upscale back to original size
-            x_0 = F.interpolate(downscaled, size=(original_shape[-2], original_shape[-1]),
-                               mode='bilinear', align_corners=False)
+            # If no GT, use LQ as is (already normalized)
+            x_0 = data
 
         # Immiscible flow (optional)
         if self.immiscible and SCIPY_AVAILABLE:
@@ -496,6 +476,36 @@ class RectifiedFlowModel(BaseModel):
 
         return self.data_unnormalize_fn(sampled_data)
 
+    def _pad_to_divisible(self, x, divisor=8):
+        """Pad input tensor to be divisible by divisor
+
+        Returns:
+            padded_tensor: Padded tensor
+            (original_h, original_w): Original dimensions before padding
+        """
+        b, c, h, w = x.shape
+        original_h, original_w = h, w
+        pad_h = (divisor - h % divisor) % divisor
+        pad_w = (divisor - w % divisor) % divisor
+
+        if pad_h > 0 or pad_w > 0:
+            # Pad: (pad_left, pad_right, pad_top, pad_bottom)
+            x = F.pad(x, (0, pad_w, 0, pad_h), mode='reflect')
+            return x, (original_h, original_w)
+        return x, (original_h, original_w)
+
+    def _crop_from_padded(self, x, original_h, original_w):
+        """Crop output tensor to remove padding
+
+        Args:
+            x: Padded tensor
+            original_h, original_w: Original dimensions before padding
+        """
+        h, w = x.shape[-2:]
+        if h > original_h or w > original_w:
+            x = x[..., :original_h, :original_w]
+        return x
+
     def test(self):
         """Test/Inference mode"""
         # For inference, we sample from the model
@@ -522,39 +532,69 @@ class RectifiedFlowModel(BaseModel):
                         mode='bilinear',
                         align_corners=False
                     )
+
                     # Normalize LQ to match training data format
                     if hasattr(self, 'data_normalize_fn'):
                         lq_upsampled = self.data_normalize_fn(lq_upsampled)
+
+                    # Pad to be divisible by 8 (UNet requirement)
+                    lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_upsampled, divisor=8)
 
                     # Use direct forward pass: predict flow at t=1 from upsampled LQ
                     # This is more stable during early training than ODE sampling
                     times = torch.ones(self.lq.shape[0], device=self.device)
                     # Predict flow from upsampled LQ at t=1
-                    _, flow = self.predict_flow(model_to_use, lq_upsampled, times=times)
+                    _, flow = self.predict_flow(model_to_use, lq_padded, times=times)
 
-                    # Clip flow to prevent extreme values
+                    # Clip flow to prevent extreme values (use tighter bounds)
                     if hasattr(self, 'clip_flow_values'):
                         flow = torch.clamp(flow, self.clip_flow_values[0], self.clip_flow_values[1])
+                    else:
+                        # Default tighter bounds to prevent extreme values
+                        flow = torch.clamp(flow, -2.0, 2.0)
 
                     # Apply flow to get final output: x_1 = x_0 + flow
-                    self.output = lq_upsampled + flow
+                    output_padded = lq_padded + flow
 
                     # Clip output to valid range before unnormalization
                     if hasattr(self, 'clip_values'):
-                        self.output = torch.clamp(self.output, self.clip_values[0], self.clip_values[1])
+                        output_padded = torch.clamp(output_padded, self.clip_values[0], self.clip_values[1])
+                    else:
+                        output_padded = torch.clamp(output_padded, -1.0, 1.0)
+
+                    # Crop back to original size
+                    self.output = self._crop_from_padded(output_padded, original_h, original_w)
 
                     # Check for NaN or Inf
                     if torch.isnan(self.output).any() or torch.isinf(self.output).any():
                         logger = get_root_logger()
                         logger.warning("Output contains NaN or Inf. Using upsampled LQ as fallback.")
-                        self.output = lq_upsampled
-
-                    # Unnormalize output
-                    if hasattr(self, 'data_unnormalize_fn'):
-                        self.output = self.data_unnormalize_fn(self.output)
+                        # Unnormalize lq_upsampled for fallback
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
+                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
+                        else:
+                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
+                    else:
+                        # Unnormalize output
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            self.output = self.data_unnormalize_fn(self.output)
 
                     # Ensure output is in valid range [0, 1] after unnormalization
                     self.output = torch.clamp(self.output, 0.0, 1.0)
+
+                    # Additional check: if output is too dark or too bright, use upsampled LQ
+                    output_mean = self.output.mean()
+                    output_std = self.output.std()
+                    if output_mean < 0.01 or output_mean > 0.99 or output_std < 0.01:
+                        logger = get_root_logger()
+                        logger.warning(f"Output appears abnormal (mean={output_mean:.4f}, std={output_std:.4f}). Using upsampled LQ.")
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
+                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
+                        else:
+                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
+                        self.output = torch.clamp(self.output, 0.0, 1.0)
                 except Exception as e:
                     # Fallback: use direct forward pass
                     logger = get_root_logger()
@@ -587,34 +627,62 @@ class RectifiedFlowModel(BaseModel):
                         mode='bilinear',
                         align_corners=False
                     )
+
                     if hasattr(self, 'data_normalize_fn'):
                         lq_upsampled = self.data_normalize_fn(lq_upsampled)
 
+                    # Pad to be divisible by 8
+                    lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_upsampled, divisor=8)
+
                     # Use direct forward pass: predict flow at t=1
                     times = torch.ones(self.lq.shape[0], device=self.device)
-                    _, flow = self.predict_flow(model_to_use, lq_upsampled, times=times)
+                    _, flow = self.predict_flow(model_to_use, lq_padded, times=times)
 
                     # Clip flow to prevent extreme values
                     if hasattr(self, 'clip_flow_values'):
                         flow = torch.clamp(flow, self.clip_flow_values[0], self.clip_flow_values[1])
+                    else:
+                        flow = torch.clamp(flow, -2.0, 2.0)
 
-                    self.output = lq_upsampled + flow
+                    output_padded = lq_padded + flow
 
                     # Clip output to valid range before unnormalization
                     if hasattr(self, 'clip_values'):
-                        self.output = torch.clamp(self.output, self.clip_values[0], self.clip_values[1])
+                        output_padded = torch.clamp(output_padded, self.clip_values[0], self.clip_values[1])
+                    else:
+                        output_padded = torch.clamp(output_padded, -1.0, 1.0)
+
+                    # Crop back to original size
+                    self.output = self._crop_from_padded(output_padded, original_h, original_w)
 
                     # Check for NaN or Inf
                     if torch.isnan(self.output).any() or torch.isinf(self.output).any():
                         logger = get_root_logger()
                         logger.warning("Output contains NaN or Inf. Using upsampled LQ as fallback.")
-                        self.output = lq_upsampled
-
-                    if hasattr(self, 'data_unnormalize_fn'):
-                        self.output = self.data_unnormalize_fn(self.output)
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
+                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
+                        else:
+                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
+                    else:
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            self.output = self.data_unnormalize_fn(self.output)
 
                     # Ensure output is in valid range [0, 1] after unnormalization
                     self.output = torch.clamp(self.output, 0.0, 1.0)
+
+                    # Additional check for abnormal outputs
+                    output_mean = self.output.mean()
+                    output_std = self.output.std()
+                    if output_mean < 0.01 or output_mean > 0.99 or output_std < 0.01:
+                        logger = get_root_logger()
+                        logger.warning(f"Output appears abnormal (mean={output_mean:.4f}, std={output_std:.4f}). Using upsampled LQ.")
+                        if hasattr(self, 'data_unnormalize_fn'):
+                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
+                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
+                        else:
+                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
+                        self.output = torch.clamp(self.output, 0.0, 1.0)
                 except Exception as e:
                     # Fallback: use simple upsampling
                     logger = get_root_logger()
