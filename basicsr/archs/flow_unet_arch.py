@@ -1,6 +1,6 @@
 """
-Rectified Flow Unet Architecture
-Based on the rectified flow implementation
+Flow UNet Architecture
+Unified UNet architecture for RectifiedFlow and FlowMatching
 """
 from __future__ import annotations
 
@@ -42,13 +42,14 @@ try:
     HYPER_CONNECTIONS_AVAILABLE = True
 except ImportError:
     HYPER_CONNECTIONS_AVAILABLE = False
-    # Simple fallback
-    class Residual:
+    # Simple fallback - must inherit from nn.Module to be used in ModuleList
+    class Residual(nn.Module):
         def __init__(self, branch, residual_transform=None):
+            super().__init__()
             self.branch = branch
             self.residual_transform = residual_transform
 
-        def __call__(self, x, *args, **kwargs):
+        def forward(self, x, *args, **kwargs):
             out = self.branch(x, *args, **kwargs)
             if self.residual_transform:
                 x = self.residual_transform(x)
@@ -353,7 +354,7 @@ class Attention(Module):
 # Main Unet
 
 @ARCH_REGISTRY.register()
-class RectifiedFlowUnet(Module):
+class FlowUNet(Module):
     def __init__(
         self,
         dim,
@@ -551,4 +552,5 @@ class RectifiedFlowUnet(Module):
             log_var = log_var.unsqueeze(0)
         variance = log_var.exp()  # variance needs to be positive
         return stack((mean, variance))
+
 
