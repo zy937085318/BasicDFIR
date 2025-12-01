@@ -169,6 +169,9 @@ class RectifiedFlowModel(FlowModel):
         # Immiscible diffusion
         self.immiscible = model_opt.get('immiscible', False)
 
+        # Data augmentation: add small Gaussian noise to x_0 and gt during training
+        self.train_noise_std = model_opt.get('train_noise_std', 0.01)  # Default: 0.01 (1% noise)
+
         # Data shape (will be set during first forward)
         self.data_shape = None
 
@@ -273,10 +276,10 @@ class RectifiedFlowModel(FlowModel):
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
         # Clear cache when new data arrives (will be recomputed in flow_interpolation)
-        if hasattr(self, '_cached_x_0'):
-            delattr(self, '_cached_x_0')
-        if hasattr(self, '_cached_x_1'):
-            delattr(self, '_cached_x_1')
+        if hasattr(self, '_cached_x_0_base'):
+            delattr(self, '_cached_x_0_base')
+        if hasattr(self, '_cached_x_1_base'):
+            delattr(self, '_cached_x_1_base')
         if hasattr(self, '_cached_lq_id'):
             delattr(self, '_cached_lq_id')
         if hasattr(self, '_cached_gt_id'):
@@ -307,23 +310,43 @@ class RectifiedFlowModel(FlowModel):
                 gt_norm = self.data_normalize_fn(self.gt)
                 target_h, target_w = self.gt.shape[-2], self.gt.shape[-1]
                 # Upsample LQ to GT size
-                x_0 = F.interpolate(lq_norm, size=(target_h, target_w), mode='bilinear', align_corners=False)
-                x_1 = gt_norm
+                x_0_base = F.interpolate(lq_norm, size=(target_h, target_w), mode='bilinear', align_corners=False)
+                x_1_base = gt_norm
             else:
                 # If no GT, use LQ as both start and end
-                x_0 = lq_norm
-                x_1 = lq_norm
+                x_0_base = lq_norm
+                x_1_base = lq_norm
 
-            # Cache for reuse
-            self._cached_x_0 = x_0
-            self._cached_x_1 = x_1
+            # Cache base values (without noise) for reuse
+            self._cached_x_0_base = x_0_base
+            self._cached_x_1_base = x_1_base
             self._cached_lq_id = current_lq_id
             if current_gt_id is not None:
                 self._cached_gt_id = current_gt_id
         else:
-            # Reuse cached values
-            x_0 = self._cached_x_0
-            x_1 = self._cached_x_1
+            # Reuse cached base values
+            x_0_base = self._cached_x_0_base
+            x_1_base = self._cached_x_1_base
+
+        # Add small Gaussian noise during training for data augmentation
+        # Add noise every time (not cached) to ensure randomness in each iteration
+        if self.opt.get('is_train', False) and self.train_noise_std > 0:
+            # Generate noise with same shape as x_0 and x_1
+            noise_x0 = torch.randn_like(x_0_base) * self.train_noise_std
+            noise_x1 = torch.randn_like(x_1_base) * self.train_noise_std
+            x_0 = x_0_base + noise_x0
+            x_1 = x_1_base + noise_x1
+            # Clip to valid range after adding noise
+            if hasattr(self, 'clip_values'):
+                x_0 = torch.clamp(x_0, self.clip_values[0], self.clip_values[1])
+                x_1 = torch.clamp(x_1, self.clip_values[0], self.clip_values[1])
+            else:
+                x_0 = torch.clamp(x_0, -1.0, 1.0)
+                x_1 = torch.clamp(x_1, -1.0, 1.0)
+        else:
+            # No noise during testing
+            x_0 = x_0_base
+            x_1 = x_1_base
 
         # Apply noise schedule to time
         t_scheduled = self.noise_schedule(t)

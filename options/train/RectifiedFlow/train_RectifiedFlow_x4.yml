@@ -73,6 +73,9 @@ rectified_flow:
   consistency_loss_weight: 1.0
   immiscible: false
   ema_update_after_step: 100
+  # Data augmentation: add small Gaussian noise to x_0 and gt during training
+  # Set to 0 to disable, default is 0.01 (1% noise)
+  train_noise_std: 0.01
 
 # Path
 path:

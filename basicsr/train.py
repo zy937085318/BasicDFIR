@@ -106,15 +106,25 @@ def train_pipeline(root_path):
             mkdir_and_rename(osp.join(opt['root_path'], 'tb_logger', opt['name']))
 
     # Create result directory for training comparison images with training info
-    # Format: result_<model_name>_<dataset_name>_<scale>_<timestamp>
-    # Each training run gets a unique folder with timestamp
+    # Format: result_<model_name>_<dataset_name>_<scale>_<timestamp>_<random>
+    # Each training run gets a unique folder with timestamp and random suffix
+    import random
     model_name = opt.get('name', 'unknown')
     dataset_name = opt['datasets']['train'].get('name', 'unknown')
     scale = opt.get('scale', 4)
     timestamp = get_time_str()
-    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}"
+    # Add microseconds and random number to ensure uniqueness
+    microsecond = int((time.time() % 1) * 1000000)
+    random_suffix = random.randint(1000, 9999)
+    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}_{microsecond:06d}_{random_suffix}"
     result_dir = osp.join(opt['path']['experiments_root'], result_dir_name)
     if opt['rank'] == 0:
+        # Ensure directory doesn't exist, if it does, add more random suffix
+        counter = 0
+        original_result_dir = result_dir
+        while osp.exists(result_dir):
+            counter += 1
+            result_dir = f"{original_result_dir}_{counter}"
         os.makedirs(result_dir, exist_ok=True)
 
     # copy the yml file to the experiment root
