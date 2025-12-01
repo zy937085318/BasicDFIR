@@ -304,7 +304,7 @@ class RectifiedFlowModel(FlowModel):
         return x_t
 
     '''
-    define the timestep sampling method.
+    define the timestep sampling method. 
     '''
     def sample_timestep(self):
         """Sample random time step for training"""
