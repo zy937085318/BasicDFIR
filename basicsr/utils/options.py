@@ -1,12 +1,13 @@
 import argparse
 import os
 import random
+import time
 import torch
 import yaml
 from collections import OrderedDict
 from os import path as osp
 
-from basicsr.utils import set_random_seed
+from basicsr.utils import set_random_seed, get_time_str
 from basicsr.utils.dist_util import get_dist_info, init_dist, master_only
 
 
@@ -174,7 +175,22 @@ def parse_options(root_path, is_train=True):
         experiments_root = opt['path'].get('experiments_root')
         if experiments_root is None:
             experiments_root = osp.join(root_path, 'experiments')
-        experiments_root = osp.join(experiments_root, opt['name'])
+
+        # Add timestamp to experiments_root to create unique folder for each training run
+        # Format: <model_name>_<timestamp>_<microsecond>_<random>
+        model_name = opt.get('name', 'unknown')
+        timestamp = get_time_str()
+        microsecond = int((time.time() % 1) * 1000000)
+        random_suffix = random.randint(1000, 9999)
+        experiments_root_with_timestamp = f"{model_name}_{timestamp}_{microsecond:06d}_{random_suffix}"
+        experiments_root = osp.join(experiments_root, experiments_root_with_timestamp)
+
+        # Ensure unique directory name (handle potential conflicts)
+        counter = 0
+        original_experiments_root = experiments_root
+        while osp.exists(experiments_root):
+            counter += 1
+            experiments_root = f"{original_experiments_root}_{counter}"
 
         opt['path']['experiments_root'] = experiments_root
         opt['path']['models'] = osp.join(experiments_root, 'models')
