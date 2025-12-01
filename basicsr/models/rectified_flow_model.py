@@ -217,6 +217,19 @@ class RectifiedFlowModel(FlowModel):
             self.cri_perceptual = None
         if self.flow_loss is None and self.cri_pix is None and self.cri_perceptual is None:
             raise ValueError('All losses (flow, pixel, perceptual) are None.')
+
+        # Cache whether flow_loss accepts additional arguments (performance optimization)
+        self._flow_loss_accepts_extra_args = False
+        if hasattr(self.flow_loss, 'forward'):
+            try:
+                import inspect
+                sig = inspect.signature(self.flow_loss.forward)
+                self._flow_loss_accepts_extra_args = 'pred_data' in sig.parameters
+            except:
+                # Fallback: check co_varnames only once
+                if hasattr(self.flow_loss.forward, '__code__'):
+                    self._flow_loss_accepts_extra_args = 'pred_data' in self.flow_loss.forward.__code__.co_varnames
+
         # set up optimizers and schedulers
         self.setup_optimizers()
         self.setup_schedulers()
@@ -259,6 +272,15 @@ class RectifiedFlowModel(FlowModel):
         self.lq = data['lq'].to(self.device)
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
+        # Clear cache when new data arrives (will be recomputed in flow_interpolation)
+        if hasattr(self, '_cached_x_0'):
+            delattr(self, '_cached_x_0')
+        if hasattr(self, '_cached_x_1'):
+            delattr(self, '_cached_x_1')
+        if hasattr(self, '_cached_lq_id'):
+            delattr(self, '_cached_lq_id')
+        if hasattr(self, '_cached_gt_id'):
+            delattr(self, '_cached_gt_id')
 
     '''
     define the interpolation processing of flow-based method. Should be instanced for different flow-based method.
@@ -268,20 +290,40 @@ class RectifiedFlowModel(FlowModel):
         """Rectified Flow interpolation: x_t = x_0 + t * (x_1 - x_0)"""
         batch = self.lq.shape[0]
 
-        # Normalize LQ and GT
-        lq_norm = self.data_normalize_fn(self.lq)
+        # Cache normalized and upsampled data to avoid recomputing every iteration
+        # Use data pointer/id to check if data actually changed (more reliable than shape)
+        current_lq_id = id(self.lq) if hasattr(self, 'gt') and self.gt is not None else id(self.lq)
+        current_gt_id = id(self.gt) if hasattr(self, 'gt') and self.gt is not None else None
 
-        # Determine target shape
-        if hasattr(self, 'gt') and self.gt is not None:
-            gt_norm = self.data_normalize_fn(self.gt)
-            target_h, target_w = self.gt.shape[-2], self.gt.shape[-1]
-            # Upsample LQ to GT size
-            x_0 = F.interpolate(lq_norm, size=(target_h, target_w), mode='bilinear', align_corners=False)
-            x_1 = gt_norm
+        if (not hasattr(self, '_cached_x_0') or
+            not hasattr(self, '_cached_lq_id') or
+            self._cached_lq_id != current_lq_id or
+            (current_gt_id is not None and (not hasattr(self, '_cached_gt_id') or self._cached_gt_id != current_gt_id))):
+            # Normalize LQ and GT
+            lq_norm = self.data_normalize_fn(self.lq)
+
+            # Determine target shape
+            if hasattr(self, 'gt') and self.gt is not None:
+                gt_norm = self.data_normalize_fn(self.gt)
+                target_h, target_w = self.gt.shape[-2], self.gt.shape[-1]
+                # Upsample LQ to GT size
+                x_0 = F.interpolate(lq_norm, size=(target_h, target_w), mode='bilinear', align_corners=False)
+                x_1 = gt_norm
+            else:
+                # If no GT, use LQ as both start and end
+                x_0 = lq_norm
+                x_1 = lq_norm
+
+            # Cache for reuse
+            self._cached_x_0 = x_0
+            self._cached_x_1 = x_1
+            self._cached_lq_id = current_lq_id
+            if current_gt_id is not None:
+                self._cached_gt_id = current_gt_id
         else:
-            # If no GT, use LQ as both start and end
-            x_0 = lq_norm
-            x_1 = lq_norm
+            # Reuse cached values
+            x_0 = self._cached_x_0
+            x_1 = self._cached_x_1
 
         # Apply noise schedule to time
         t_scheduled = self.noise_schedule(t)
@@ -304,7 +346,7 @@ class RectifiedFlowModel(FlowModel):
         return x_t
 
     '''
-    define the timestep sampling method. 
+    define the timestep sampling method.
     '''
     def sample_timestep(self):
         """Sample random time step for training"""
@@ -456,8 +498,8 @@ class RectifiedFlowModel(FlowModel):
 
         # flow loss
         if self.flow_loss:
-            # Check if loss function accepts additional arguments
-            if hasattr(self.flow_loss, 'forward') and 'pred_data' in self.flow_loss.forward.__code__.co_varnames:
+            # Use cached flag instead of checking every iteration
+            if self._flow_loss_accepts_extra_args:
                 l_flow = self.flow_loss(model_output, self.vt_tar, pred_data=pred_data,
                                        times=times, data=self.x_1)
             else:
@@ -526,7 +568,20 @@ class RectifiedFlowModel(FlowModel):
 
         l_total.backward()
         self.optimizer_g.step()
-        self.log_dict = self.reduce_loss_dict(loss_dict)
+
+        # Print loss every 100 iterations
+        if current_iter % 100 == 0:
+            logger = get_root_logger()
+            loss_str = f'[Iter {current_iter}] Losses: '
+            for k, v in loss_dict.items():
+                if isinstance(v, torch.Tensor):
+                    loss_str += f'{k}: {v.item():.6f} '
+                else:
+                    loss_str += f'{k}: {v:.6f} '
+            logger.info(loss_str)
+
+        # Don't log loss values to avoid printing in regular logs
+        self.log_dict = OrderedDict()
 
         # Update EMA
         if self.ema_decay > 0 and not self.use_consistency:
