@@ -177,12 +177,11 @@ def parse_options(root_path, is_train=True):
             experiments_root = osp.join(root_path, 'experiments')
 
         # Add timestamp to experiments_root to create unique folder for each training run
-        # Format: <model_name>_<timestamp>_<microsecond>_<random>
+        # Format: <model_name>_<timestamp>_<microsecond>
         model_name = opt.get('name', 'unknown')
         timestamp = get_time_str()
         microsecond = int((time.time() % 1) * 1000000)
-        random_suffix = random.randint(1000, 9999)
-        experiments_root_with_timestamp = f"{model_name}_{timestamp}_{microsecond:06d}_{random_suffix}"
+        experiments_root_with_timestamp = f"{model_name}_{timestamp}_{microsecond:06d}"
         experiments_root = osp.join(experiments_root, experiments_root_with_timestamp)
 
         # Ensure unique directory name (handle potential conflicts)

@@ -106,17 +106,15 @@ def train_pipeline(root_path):
             mkdir_and_rename(osp.join(opt['root_path'], 'tb_logger', opt['name']))
 
     # Create result directory for training comparison images with training info
-    # Format: result_<model_name>_<dataset_name>_<scale>_<timestamp>_<random>
-    # Each training run gets a unique folder with timestamp and random suffix
-    import random
+    # Format: result_<model_name>_<dataset_name>_<scale>_<timestamp>_<microsecond>
+    # Each training run gets a unique folder with timestamp and microsecond
     model_name = opt.get('name', 'unknown')
     dataset_name = opt['datasets']['train'].get('name', 'unknown')
     scale = opt.get('scale', 4)
     timestamp = get_time_str()
-    # Add microseconds and random number to ensure uniqueness
+    # Add microseconds to ensure uniqueness
     microsecond = int((time.time() % 1) * 1000000)
-    random_suffix = random.randint(1000, 9999)
-    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}_{microsecond:06d}_{random_suffix}"
+    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}_{microsecond:06d}"
     result_dir = osp.join(opt['path']['experiments_root'], result_dir_name)
     if opt['rank'] == 0:
         # Ensure directory doesn't exist, if it does, add more random suffix
