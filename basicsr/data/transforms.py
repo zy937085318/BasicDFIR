@@ -24,9 +24,9 @@ def mod_crop(img, scale):
 
 
 def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
-    """Paired random crop. Support Numpy array and Tensor inputs.
+    """Paired crop from top-left corner. Support Numpy array and Tensor inputs.
 
-    It crops lists of lq and gt images with corresponding locations.
+    It crops lists of lq and gt images with corresponding locations from the top-left corner.
 
     Args:
         img_gts (list[ndarray] | ndarray | list[Tensor] | Tensor): GT images. Note that all images
@@ -68,9 +68,9 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
                          f'({lq_patch_size}, {lq_patch_size}). '
                          f'Please remove {gt_path}.')
 
-    # randomly choose top and left coordinates for lq patch
-    top = random.randint(0, h_lq - lq_patch_size)
-    left = random.randint(0, w_lq - lq_patch_size)
+    # fixed crop from top-left corner
+    top = 0
+    left = 0
 
     # crop lq patch
     if input_type == 'Tensor':

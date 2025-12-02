@@ -34,8 +34,6 @@ except ImportError:
 try:
     from scipy.optimize import linear_sum_assignment
     SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
 
 def from_numpy(arr):
     return torch.from_numpy(arr)

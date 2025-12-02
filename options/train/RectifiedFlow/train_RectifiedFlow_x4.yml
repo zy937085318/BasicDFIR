@@ -73,7 +73,7 @@ rectified_flow:
   consistency_loss_weight: 1.0
   immiscible: false
   ema_update_after_step: 100
-  train_noise_std: 0.001
+  train_noise_std: 0.0001
 
 # Path
 path:
@@ -100,12 +100,12 @@ train:
 
   # Losses
   flow_opt:
-#    type: MSELoss
-#    loss_weight: 1.0
+    type: MSELoss
+    loss_weight: 1.0
     # Alternative loss options:
-     type: PseudoHuberLoss
-     data_dim: 3
-     loss_weight: 1.0
+#     type: PseudoHuberLoss
+#     data_dim: 3
+#     loss_weight: 1.0
     #
     # type: PseudoHuberLossWithLPIPS
     # data_dim: 3
