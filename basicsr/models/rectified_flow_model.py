@@ -34,6 +34,9 @@ except ImportError:
 try:
     from scipy.optimize import linear_sum_assignment
     SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    linear_sum_assignment = None
 
 def from_numpy(arr):
     return torch.from_numpy(arr)
@@ -721,24 +724,6 @@ class RectifiedFlowModel(FlowModel):
         if h > original_h or w > original_w:
             x = x[..., :original_h, :original_w]
         return x
-
-    '''
-    self.output is reconstructed image from sample_image method.
-    '''
-    def test(self):
-        if hasattr(self, 'net_g_ema') and not self.use_consistency:
-            self.net_g_ema.eval()
-            with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g_ema)
-        elif self.use_consistency and hasattr(self, 'ema_model'):
-            self.ema_model.ema_model.eval()
-            with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.ema_model.ema_model)
-        else:
-            self.net_g.eval()
-            with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g)
-            self.net_g.train()
 
     def dist_validation(self, dataloader, current_iter, tb_logger, save_img):
         if self.opt['rank'] == 0:
