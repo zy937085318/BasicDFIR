@@ -1,10 +1,10 @@
-# Rectified Flow Test Configuration
+# Flow Model Test Configuration
 # General settings
-name: test_RectifiedFlow_x4
-model_type: RectifiedFlowModel
+name: test_Flow_x4
+model_type: FlowModel
 scale: 4
 num_gpu: 1
-manual_seed: 10
+manual_seed: 0
 
 # Network structures
 network_g:
@@ -21,28 +21,13 @@ network_g:
   attn_heads: 4
   num_residual_streams: 2
 
-# Rectified Flow specific settings
-rectified_flow:
-  time_cond_kwarg: 'times'
-  predict: 'flow'
-  mean_variance_net: false
-  noise_schedule: 'cosmap'
-  odeint_kwargs:
-    atol: 1e-5
-    rtol: 1e-5
-    method: 'midpoint'
-  clip_during_sampling: false
-  clip_flow_during_sampling: null
-  clip_values: [-1.0, 1.0]
-  clip_flow_values: [-3.0, 3.0]
-  use_consistency: false
-  # Sampling settings
-  sample_steps: 16
-  sample_temperature: 1.0
-
 # Path
+# IMPORTANT: You need to train the model first using train_flow.sh, then update the path below
+# After training, the model will be saved in: experiments/<experiment_name>/models/net_g_latest.pth
+# Example path: experiments/flowSR_20251207_123456_123456/models/net_g_latest.pth
+# To find your model path, check the experiments directory after training
 path:
-  pretrain_network_g: experiments/RectifiedFlow_x4_DIV2K_300k/models/net_g_latest.pth
+  pretrain_network_g: ~  # REQUIRED: Set to your trained model path before running benchmark
   strict_load_g: true
 
 # Dataset settings - Standard SR benchmarks
@@ -65,6 +50,7 @@ datasets:
     io_backend:
       type: disk
 
+
 # Validation settings
 val:
   suffix: ~
@@ -79,7 +65,4 @@ val:
       type: calculate_ssim
       crop_border: 4
       test_y_channel: false
-
-
-
 
