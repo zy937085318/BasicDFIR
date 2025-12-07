@@ -1,22 +1,24 @@
 # general settings
-name: meanflowSR
-model_type: MeanFlowModel
+name: flowSR
+model_type: FlowModel
 scale: 4
-num_gpu: 1  # set num_gpu: 0 for cpu mode, using 1 for single GPU debugging
+num_gpu: 1  # set num_gpu: 0 for cpu mode
 manual_seed: 0
 
 # network structures
 network_g:
-  type: DiT
-  input_size: 128
-  patch_size: 4
-  in_channels: 3
-  dim: 384
-  depth: 12
-  num_heads: 16
-  mlp_ratio: 4.0
-  num_register_tokens: 4
-  num_classes: ~
+  type: FlowUNet
+  dim: 64
+  init_dim: 64
+  channels: 3
+  dim_mults: [1, 2, 4, 8]
+  mean_variance_net: false
+  learned_sinusoidal_cond: false
+  random_fourier_features: false
+  dropout: 0.0
+  attn_dim_head: 32
+  attn_heads: 4
+  num_residual_streams: 2
 
 # path
 path:
@@ -43,10 +45,14 @@ train:
   warmup_iter: -1  # no warm up
 
   # losses
+  flow_opt:
+    type: MSELoss
+    loss_weight: 1.0
   pixel_opt:
     type: L1Loss
     loss_weight: 1.0
     reduction: mean
+  perceptual_opt: ~
 
 # validation settings
 val:
@@ -76,7 +82,6 @@ dist_params:
 # dataset and data loader settings
 datasets:
   train:
-
     task: SR
     name: DF2K
     type: PairedImageDataset
@@ -113,27 +118,4 @@ datasets:
     filename_tmpl: '{}'
     io_backend:
       type: disk
-#  val_3:
-#    name: Urban100
-#    type: PairedImageDataset
-#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Urban100/image_SRF_4/HR
-#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Urban100/image_SRF_4/LR
-#    filename_tmpl: '{}'
-#    io_backend:
-#      type: disk
-#  val_4:
-#    name: BSDS100
-#    type: PairedImageDataset
-#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/BSDS100/image_SRF_4/HR
-#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/BSDS100/image_SRF_4/LR
-#    filename_tmpl: '{}'
-#    io_backend:
-#      type: disk
-#  val_5:
-#    name: Manga109
-#    type: PairedImageDataset
-#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Manga109/image_SRF_4/HR
-#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Manga109/image_SRF_4/LR
-#    filename_tmpl: '{}'
-#    io_backend:
-#      type: disk
+

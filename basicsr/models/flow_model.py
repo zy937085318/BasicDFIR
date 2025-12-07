@@ -1,4 +1,3 @@
-import inspect
 import torch
 import torch.nn.functional as F
 from collections import OrderedDict
@@ -23,6 +22,7 @@ class FlowModel(SRModel):
         self.xt = None
         self.vt_pre = None
         self.vt_tar = None
+
     def init_training_settings(self):
         self.net_g.train()
         train_opt = self.opt['train']
@@ -80,25 +80,60 @@ class FlowModel(SRModel):
     input:time step t
     '''
     def flow_interpolation(self, t, r=None):
-        pass
+        """Default flow interpolation implementation.
+        This is a simple linear interpolation: x_t = (1-t) * x_1 + t * x_0
+        Subclasses should override this method for specific flow-based methods.
+        """
+        if self.gt is None:
+            raise ValueError('GT is required for flow interpolation')
+
+        batch_size = self.lq.shape[0]
+        device = self.device
+
+        # Sample time step if not provided
+        if t is None or (isinstance(t, torch.Tensor) and t.numel() == 0):
+            # Uniform sampling in [0, 1]
+            self.t = torch.rand(batch_size, device=device)
+        else:
+            self.t = t if isinstance(t, torch.Tensor) else torch.tensor(t, device=device)
+            if self.t.numel() == 1:
+                self.t = self.t.expand(batch_size)
+
+        # Upsample LQ to GT size
+        h, w = self.gt.shape[-2:]
+        lq_up = F.interpolate(
+            self.lq, size=(h, w), mode='bicubic', align_corners=False
+        )
+
+        # Linear interpolation: x_t = (1-t) * x_1 + t * x_0
+        # where x_0 = lq_up (low quality), x_1 = gt (high quality)
+        t_map = self.t.view(batch_size, 1, 1, 1)
+        self.xt = (1 - t_map) * self.gt + t_map * lq_up
+
+        # Target velocity: v_t = x_1 - x_0 = gt - lq_up
+        self.vt_tar = self.gt - lq_up
+
+        return self.xt
 
     '''
     define the timestep sampling method.
     '''
     def sample_timestep(self):
+        """Sample time step. Returns self.t if already set, otherwise None."""
         return self.t
 
     '''
     main processing of flow.
     '''
     def flow_process(self):
-        self.sample_timestep()
+        """Main flow processing: sample timestep and perform interpolation."""
+        # flow_interpolation will handle time sampling if self.t is None
         self.xt = self.flow_interpolation(self.t)
 
     '''
     sample image with flow-based ODE.
     '''
-    def sample_image(self, ema=False):
+    def sample_image(self, lq=None, model=None, ema=False):
         srimage = None
         return srimage
 
@@ -108,7 +143,32 @@ class FlowModel(SRModel):
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
         self.flow_process()
-        self.vt_pre = self.net_g(self.xt)
+
+        # Prepare time conditioning for network
+        # FlowUNet requires times as the second positional argument
+        times = self.t
+        if times is not None:
+            # Ensure times is 1D tensor with shape [batch_size]
+            if times.dim() > 1:
+                times = times.flatten()
+            if times.numel() == 1:
+                # Expand to batch size if single value
+                batch_size = self.xt.shape[0]
+                times = times.expand(batch_size)
+            self.vt_pre = self.net_g(self.xt, times)
+        else:
+            raise ValueError('Time step self.t is None. flow_process() should set self.t.')
+
+        # Compute predicted data for loss computation
+        # self.output is the predicted high-resolution image
+        # Formula: output = xt + vt_pre * (1 - t)
+        # Reshape times to [batch_size, 1, 1, 1] for broadcasting
+        if times.dim() == 1:
+            t_view = times.view(-1, 1, 1, 1)
+        else:
+            t_view = times.flatten().view(-1, 1, 1, 1)
+        self.output = self.xt + self.vt_pre * (1. - t_view)
+
         l_total = 0
         loss_dict = OrderedDict()
         # flow loss
@@ -140,146 +200,63 @@ class FlowModel(SRModel):
     self.output is reconstructed image from sample_image method.
     '''
     def test(self):
-        """Test method for flow-based models with tile-based processing.
-
-        This method processes images in tiles to handle large images efficiently,
-        especially suitable for SET14 dataset. It handles different EMA scenarios:
-        1. Regular EMA model (net_g_ema)
-        2. Consistency flow matching EMA model (ema_model.ema_model)
-        3. Standard model (net_g)
-
-        The tile size is optimized for SET14 dataset (200 pixels per tile).
-        """
-        _, C, h, w = self.lq.size()
-
-        # Tile size optimized for SET14 dataset
-        # SET14 images are typically 200-800 pixels, so 200 pixels per tile is appropriate
-        tile_size = 200
-        split_token_h = h // tile_size + 1  # number of horizontal cut sections
-        split_token_w = w // tile_size + 1  # number of vertical cut sections
-
-        # Padding
-        mod_pad_h, mod_pad_w = 0, 0
-        if h % split_token_h != 0:
-            mod_pad_h = split_token_h - h % split_token_h
-        if w % split_token_w != 0:
-            mod_pad_w = split_token_w - w % split_token_w
-
-        img = F.pad(self.lq, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
-        _, _, H, W = img.size()
-
-        split_h = H // split_token_h  # height of each partition
-        split_w = W // split_token_w  # width of each partition
-
-        # Overlapping to avoid boundary artifacts
-        shave_h = split_h // 10
-        shave_w = split_w // 10
-
-        scale = self.opt.get('scale', 1)
-        ral = H // split_h
-        row = W // split_w
-
-        # Generate slice indices for each tile
-        slices = []  # list of partition borders
-        for i in range(ral):
-            for j in range(row):
-                if i == 0 and i == ral - 1:
-                    top = slice(i * split_h, (i + 1) * split_h)
-                elif i == 0:
-                    top = slice(i * split_h, (i + 1) * split_h + shave_h)
-                elif i == ral - 1:
-                    top = slice(i * split_h - shave_h, (i + 1) * split_h)
-                else:
-                    top = slice(i * split_h - shave_h, (i + 1) * split_h + shave_h)
-
-                if j == 0 and j == row - 1:
-                    left = slice(j * split_w, (j + 1) * split_w)
-                elif j == 0:
-                    left = slice(j * split_w, (j + 1) * split_w + shave_w)
-                elif j == row - 1:
-                    left = slice(j * split_w - shave_w, (j + 1) * split_w)
-                else:
-                    left = slice(j * split_w - shave_w, (j + 1) * split_w + shave_w)
-
-                temp = (top, left)
-                slices.append(temp)
-
-        # Extract image tiles
-        img_chops = []  # list of partitions
-        for temp in slices:
-            top, left = temp
-            img_chops.append(img[..., top, left])
-
-        # Determine which model to use
-        # Check if using consistency flow matching with EMA model
-        if hasattr(self, 'use_consistency') and self.use_consistency and hasattr(self, 'ema_model'):
-            model_to_use = self.ema_model.ema_model
-            use_ema = True
-        # Check if using regular EMA model
-        elif hasattr(self, 'net_g_ema'):
-            # Check if consistency is disabled (to avoid using net_g_ema when consistency is enabled)
-            if not (hasattr(self, 'use_consistency') and self.use_consistency):
-                model_to_use = self.net_g_ema
-                use_ema = True
-            else:
-                # Consistency is enabled, use regular model
-                model_to_use = self.net_g
-                use_ema = False
-        # Use standard model
+        if hasattr(self, 'net_g_ema'):
+            self.net_g_ema.eval()
+            with torch.no_grad():
+                self.output = self.sample_image(self.lq, model=self.net_g_ema)
         else:
-            model_to_use = self.net_g
-            use_ema = False
-
-        # Set model to eval mode
-        model_to_use.eval()
-
-        # Check method signature to determine how to call sample_image
-        sample_image_sig = inspect.signature(self.sample_image)
-        has_lq_param = 'lq' in sample_image_sig.parameters
-        has_model_param = 'model' in sample_image_sig.parameters
-        use_sample_image = has_lq_param and has_model_param
-
-        with torch.no_grad():
-            outputs = []
-            for chop in img_chops:
-                # Process each tile
-                if use_sample_image:
-                    # Use sample_image method (for flow-based models like RectifiedFlow)
-                    out = self.sample_image(lq=chop, model=model_to_use)
-                else:
-                    # Direct network forward pass (for simpler models)
-                    out = model_to_use(chop)
-                outputs.append(out)
-
-            # Merge tiles
-            _img = torch.zeros(1, C, H * scale, W * scale, device=self.device, dtype=outputs[0].dtype)
-
-            for i in range(ral):
-                for j in range(row):
-                    top = slice(i * split_h * scale, (i + 1) * split_h * scale)
-                    left = slice(j * split_w * scale, (j + 1) * split_w * scale)
-
-                    if i == 0:
-                        _top = slice(0, split_h * scale)
-                    else:
-                        _top = slice(shave_h * scale, (shave_h + split_h) * scale)
-
-                    if j == 0:
-                        _left = slice(0, split_w * scale)
-                    else:
-                        _left = slice(shave_w * scale, (shave_w + split_w) * scale)
-
-                    _img[..., top, left] = outputs[i * row + j][..., _top, _left]
-
-            self.output = _img
-
-        # Remove padding
-        _, _, h, w = self.output.size()
-        self.output = self.output[:, :, 0:h - mod_pad_h * scale, 0:w - mod_pad_w * scale]
-
-        # Restore training mode if using regular model
-        if not use_ema:
+            self.net_g.eval()
+            with torch.no_grad():
+                self.output = self.sample_image(self.lq, model=self.net_g)
             self.net_g.train()
+
+    # def test_selfensemble(self):
+    #     # TODO: to be tested
+    #     # 8 augmentations
+    #     # modified from https://github.com/thstkdgus35/EDSR-PyTorch
+    #
+    #     def _transform(v, op):
+    #         # if self.precision != 'single': v = v.float()
+    #         v2np = v.data.cpu().numpy()
+    #         if op == 'v':
+    #             tfnp = v2np[:, :, :, ::-1].copy()
+    #         elif op == 'h':
+    #             tfnp = v2np[:, :, ::-1, :].copy()
+    #         elif op == 't':
+    #             tfnp = v2np.transpose((0, 1, 3, 2)).copy()
+    #
+    #         ret = torch.Tensor(tfnp).to(self.device)
+    #         # if self.precision == 'half': ret = ret.half()
+    #
+    #         return ret
+    #
+    #     # prepare augmented data
+    #     lq_list = [self.lq]
+    #     for tf in 'v', 'h', 't':
+    #         lq_list.extend([_transform(t, tf) for t in lq_list])
+    #
+    #     # inference
+    #     if hasattr(self, 'net_g_ema'):
+    #         self.net_g_ema.eval()
+    #         with torch.no_grad():
+    #             out_list = [self.net_g_ema(aug) for aug in lq_list]
+    #     else:
+    #         self.net_g.eval()
+    #         with torch.no_grad():
+    #             out_list = [self.net_g_ema(aug) for aug in lq_list]
+    #         self.net_g.train()
+    #
+    #     # merge results
+    #     for i in range(len(out_list)):
+    #         if i > 3:
+    #             out_list[i] = _transform(out_list[i], 't')
+    #         if i % 4 > 1:
+    #             out_list[i] = _transform(out_list[i], 'h')
+    #         if (i % 4) % 2 == 1:
+    #             out_list[i] = _transform(out_list[i], 'v')
+    #     output = torch.cat(out_list, dim=0)
+    #
+    #     self.output = output.mean(dim=0, keepdim=True)
 
     '''
     added code to delete flow-based attribution self.v_pred et.al.
