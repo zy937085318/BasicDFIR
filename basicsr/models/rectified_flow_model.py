@@ -120,7 +120,7 @@ class EMA:
 @MODEL_REGISTRY.register()
 class RectifiedFlowModel(FlowModel):
     """Rectified Flow Model for Super Resolution"""
-
+    #test
     def __init__(self, opt):
         # Get model configuration before calling parent init
         model_opt = opt.get('rectified_flow', {})
