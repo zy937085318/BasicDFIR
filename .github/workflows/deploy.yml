@@ -1,0 +1,15 @@
+name: Manual Deploy
+on:
+  workflow_dispatch:          # 仅此一行，表示“只能手动点按钮”
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: run deploy script on server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USER }}
+        key: ${{ secrets.SSH_KEY }}
+        script: /opt/deploy.sh

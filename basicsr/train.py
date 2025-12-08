@@ -242,6 +242,17 @@ def train_pipeline(root_path):
         tb_logger.close()
 
 
+def make_minimally_modified_github_query(user: str, owner: str, repository: str) -> str:
+    """
+    Return a minimally modified GitHub search query.
+    Current minimal modification: restrict to pull requests (is:pr).
+    Adjust 'is:pr' to 'is:issue' or add other filters after you specify the requirement.
+    """
+    # Return a literal query using the ${...} placeholder style from the prompt,
+    # minimally adding `is:pr`.
+    return "author:${user} state:open repo:${owner}/${repository} sort:created-desc is:pr"
+
+
 if __name__ == '__main__':
     root_path = osp.abspath(osp.join(__file__, osp.pardir, osp.pardir))
     train_pipeline(root_path)
