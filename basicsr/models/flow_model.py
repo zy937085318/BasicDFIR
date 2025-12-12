@@ -134,8 +134,66 @@ class FlowModel(SRModel):
     sample image with flow-based ODE.
     '''
     def sample_image(self, lq=None, model=None, ema=False):
-        srimage = None
-        return srimage
+        """Sample image using flow-based forward pass"""
+        if lq is None:
+            lq = self.lq
+
+        # Determine which model to use
+        if model is not None:
+            model_to_use = model
+        elif ema and hasattr(self, 'net_g_ema'):
+            model_to_use = self.net_g_ema
+        else:
+            model_to_use = self.net_g
+
+        # Get target size from scale
+        scale = self.opt.get('scale', 4)
+        h, w = lq.shape[-2:]
+        target_size = (h * scale, w * scale)
+
+        # Upsample LQ to target size
+        lq_upsampled = F.interpolate(
+            lq, size=target_size, mode='bicubic', align_corners=False
+        )
+
+        # Get downsample_factor from model (default 8 for FlowUNet)
+        if hasattr(model_to_use, 'downsample_factor'):
+            downsample_factor = model_to_use.downsample_factor
+        else:
+            downsample_factor = 8
+
+        # Pad to be divisible by downsample_factor
+        _, _, h_up, w_up = lq_upsampled.shape
+        pad_h = (downsample_factor - h_up % downsample_factor) % downsample_factor
+        pad_w = (downsample_factor - w_up % downsample_factor) % downsample_factor
+
+        if pad_h > 0 or pad_w > 0:
+            lq_padded = F.pad(lq_upsampled, (0, pad_w, 0, pad_h), mode='reflect')
+            original_h, original_w = h_up, w_up
+        else:
+            lq_padded = lq_upsampled
+            original_h, original_w = h_up, w_up
+
+        # Use t=1 to predict flow at final time step
+        batch_size = lq_padded.shape[0]
+        times = torch.ones(batch_size, device=self.device)
+
+        # Predict flow: v = net_g(x_t, t)
+        vt_pre = model_to_use(lq_padded, times)
+
+        # Apply flow: x_1 = x_0 + v
+        output_padded = lq_padded + vt_pre
+
+        # Crop back to original size if padding was applied
+        if pad_h > 0 or pad_w > 0:
+            output = output_padded[:, :, :original_h, :original_w]
+        else:
+            output = output_padded
+
+        # Clamp to valid range [0, 1]
+        output = torch.clamp(output, 0.0, 1.0)
+
+        return output
 
     '''
     Add flow-based loss function.
@@ -198,17 +256,162 @@ class FlowModel(SRModel):
 
     '''
     self.output is reconstructed image from sample_image method.
+    Tile-based processing for large images to manage memory.
     '''
     def test(self):
+        _, C, h, w = self.lq.size()
+        scale = self.opt.get('scale', 4)
+
+        # Check if model has fixed input size (e.g., MeanFlow with DiT)
+        model_input_size = self.opt['network_g'].get('input_size', None)
+
+        if model_input_size is not None:
+            # For models with fixed input size, adjust chunk size to match
+            # For scale=4 and input_size=128, each LR chunk should be 32x32
+            chunk_size_lr = model_input_size // scale
+            split_token_h = max(1, h // chunk_size_lr)
+            split_token_w = max(1, w // chunk_size_lr)
+        else:
+            # Default chunk size
+            split_token_h = h // 200 + 1  # number of horizontal cut sections
+            split_token_w = w // 200 + 1  # number of vertical cut sections
+
+        # padding
+        mod_pad_h, mod_pad_w = 0, 0
+        if h % split_token_h != 0:
+            mod_pad_h = split_token_h - h % split_token_h
+        if w % split_token_w != 0:
+            mod_pad_w = split_token_w - w % split_token_w
+
+        img = F.pad(self.lq, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
+        _, _, H, W = img.size()
+
+        if model_input_size is not None:
+            # Use fixed chunk size for models with fixed input
+            split_h = chunk_size_lr
+            split_w = chunk_size_lr
+            # No overlapping for fixed input size models to ensure exact size match
+            shave_h = 0
+            shave_w = 0
+        else:
+            split_h = H // split_token_h  # height of each partition
+            split_w = W // split_token_w  # width of each partition
+            # overlapping
+            shave_h = split_h // 10
+            shave_w = split_w // 10
+
+        ral = H // split_h
+        row = W // split_w
+
+        slices = []  # list of partition borders
+        for i in range(ral):
+            for j in range(row):
+                if i == 0 and i == ral - 1:
+                    top = slice(i * split_h, (i + 1) * split_h)
+                elif i == 0:
+                    top = slice(i*split_h, (i+1)*split_h+shave_h)
+                elif i == ral - 1:
+                    top = slice(i*split_h-shave_h, (i+1)*split_h)
+                else:
+                    top = slice(i*split_h-shave_h, (i+1)*split_h+shave_h)
+
+                if j == 0 and j == row - 1:
+                    left = slice(j*split_w, (j+1)*split_w)
+                elif j == 0:
+                    left = slice(j*split_w, (j+1)*split_w+shave_w)
+                elif j == row - 1:
+                    left = slice(j*split_w-shave_w, (j+1)*split_w)
+                else:
+                    left = slice(j*split_w-shave_w, (j+1)*split_w+shave_w)
+
+                temp = (top, left)
+                slices.append(temp)
+
+        img_chops = []  # list of partitions
+        for temp in slices:
+            top, left = temp
+            img_chops.append(img[..., top, left])
+
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g_ema)
+                outputs = []
+                for chop in img_chops:
+                    # Use sample_image for flow-based models
+                    out = self.sample_image(chop, model=self.net_g_ema)
+                    # Ensure output has batch dimension [B, C, H, W]
+                    if out.dim() == 3:
+                        out = out.unsqueeze(0)
+                    outputs.append(out)
+
+                _img = torch.zeros(1, C, H * scale, W * scale, device=self.device)
+                # merge
+                for i in range(ral):
+                    for j in range(row):
+                        top = slice(i * split_h * scale, (i + 1) * split_h * scale)
+                        left = slice(j * split_w * scale, (j + 1) * split_w * scale)
+                        if i == 0:
+                            _top = slice(0, split_h * scale)
+                        else:
+                            _top = slice(shave_h*scale, (shave_h+split_h)*scale)
+                        if j == 0:
+                            _left = slice(0, split_w*scale)
+                        else:
+                            _left = slice(shave_w*scale, (shave_w+split_w)*scale)
+
+                        output_chunk = outputs[i * row + j]
+                        # Ensure output_chunk has correct shape [1, C, H, W]
+                        if output_chunk.dim() == 4 and output_chunk.shape[0] == 1:
+                            _img[..., top, left] = output_chunk[..., _top, _left]
+                        else:
+                            # Handle unexpected shapes
+                            if output_chunk.dim() == 3:
+                                output_chunk = output_chunk.unsqueeze(0)
+                            _img[..., top, left] = output_chunk[0:1, ..., _top, _left]
+
+                self.output = _img
         else:
             self.net_g.eval()
             with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g)
+                outputs = []
+                for chop in img_chops:
+                    # Use sample_image for flow-based models
+                    out = self.sample_image(chop, model=self.net_g)
+                    # Ensure output has batch dimension [B, C, H, W]
+                    if out.dim() == 3:
+                        out = out.unsqueeze(0)
+                    outputs.append(out)
+
+                _img = torch.zeros(1, C, H * scale, W * scale, device=self.device)
+                # merge
+                for i in range(ral):
+                    for j in range(row):
+                        top = slice(i * split_h * scale, (i + 1) * split_h * scale)
+                        left = slice(j * split_w * scale, (j + 1) * split_w * scale)
+                        if i == 0:
+                            _top = slice(0, split_h * scale)
+                        else:
+                            _top = slice(shave_h * scale, (shave_h + split_h) * scale)
+                        if j == 0:
+                            _left = slice(0, split_w * scale)
+                        else:
+                            _left = slice(shave_w * scale, (shave_w + split_w) * scale)
+
+                        output_chunk = outputs[i * row + j]
+                        # Ensure output_chunk has correct shape [1, C, H, W]
+                        if output_chunk.dim() == 4 and output_chunk.shape[0] == 1:
+                            _img[..., top, left] = output_chunk[..., _top, _left]
+                        else:
+                            # Handle unexpected shapes
+                            if output_chunk.dim() == 3:
+                                output_chunk = output_chunk.unsqueeze(0)
+                            _img[..., top, left] = output_chunk[0:1, ..., _top, _left]
+
+                self.output = _img
             self.net_g.train()
+
+        _, _, h, w = self.output.size()
+        self.output = self.output[:, :, 0:h - mod_pad_h * scale, 0:w - mod_pad_w * scale]
 
     # def test_selfensemble(self):
     #     # TODO: to be tested
@@ -290,13 +493,20 @@ class FlowModel(SRModel):
             if 'gt' in visuals:
                 gt_img = tensor2img([visuals['gt']])
                 metric_data['img2'] = gt_img
-                del self.gt
+                if hasattr(self, 'gt'):
+                    del self.gt
 
             # tentative for out of GPU memory
-            del self.xt
-            del self.vt_pre
-            del self.lq
-            del self.output
+            if hasattr(self, 'xt'):
+                del self.xt
+            if hasattr(self, 'vt_pre'):
+                del self.vt_pre
+            if hasattr(self, 'vt_tar'):
+                del self.vt_tar
+            if hasattr(self, 'lq'):
+                del self.lq
+            if hasattr(self, 'output'):
+                del self.output
             torch.cuda.empty_cache()
 
             if save_img:
