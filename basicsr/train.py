@@ -204,25 +204,26 @@ def train_pipeline(root_path):
                 msg_logger(log_vars)
 
             # Save training result comparison images every 100 iterations
-            if current_iter % 100 == 0 and opt['rank'] == 0:
-                # Set network to eval mode
-                if hasattr(model, 'net_g'):
-                    model.net_g.eval()
-                with torch.no_grad():
-                    # Get a sample from current batch (use a copy to avoid affecting training)
-                    sample_data = {}
-                    sample_data['lq'] = train_data['lq'][:1].clone()  # Take first image
-                    if 'gt' in train_data:
-                        sample_data['gt'] = train_data['gt'][:1].clone()
-                    model.feed_data(sample_data)
-                    # Use test() method which handles sampling correctly
-                    # This will use GT shape if available and start from upsampled LQ
-                    model.test()
-                    if hasattr(model, 'save_training_results'):
-                        model.save_training_results(current_iter, result_dir)
-                # Set network back to train mode
-                if hasattr(model, 'net_g'):
-                    model.net_g.train()
+            # Disabled: Commented out to avoid generating validation images every 100 steps
+            # if current_iter % 100 == 0 and opt['rank'] == 0:
+            #     # Set network to eval mode
+            #     if hasattr(model, 'net_g'):
+            #         model.net_g.eval()
+            #     with torch.no_grad():
+            #         # Get a sample from current batch (use a copy to avoid affecting training)
+            #         sample_data = {}
+            #         sample_data['lq'] = train_data['lq'][:1].clone()  # Take first image
+            #         if 'gt' in train_data:
+            #             sample_data['gt'] = train_data['gt'][:1].clone()
+            #         model.feed_data(sample_data)
+            #         # Use test() method which handles sampling correctly
+            #         # This will use GT shape if available and start from upsampled LQ
+            #         model.test()
+            #         if hasattr(model, 'save_training_results'):
+            #             model.save_training_results(current_iter, result_dir)
+            #     # Set network back to train mode
+            #     if hasattr(model, 'net_g'):
+            #         model.net_g.train()
 
             # save models and training states
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:

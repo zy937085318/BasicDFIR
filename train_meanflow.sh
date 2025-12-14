@@ -2,7 +2,7 @@
 
 DEFAULT_CONFIG="options/train/Meanflow/train_Meanflow_x4.yml"
 DEFAULT_GPU="1"
-DEFAULT_GPU_ID="1"  # Default GPU ID to use
+DEFAULT_GPU_ID="2"  # Default GPU ID to use
 
 # Parse arguments
 CONFIG_FILE="${1:-$DEFAULT_CONFIG}"

@@ -50,19 +50,23 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 5e2
+  val_freq: !!float 5e3
   save_img: true
 
   metrics:
-    psnr: # metric name, can be arbitrary
+    psnr:
       type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
       crop_border: 4
       test_y_channel: false
 
 # logging settings
 logger:
   print_freq: 100
-  save_checkpoint_freq: !!float 5e2
+  save_checkpoint_freq: !!float 5e3
   use_tb_logger: true
   wandb:
     project: ~

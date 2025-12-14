@@ -243,22 +243,29 @@ class RectifiedFlowModel(FlowModel):
         batch = noised.shape[0]
 
         # Prepare time conditioning
-        time_kwarg = self.time_cond_kwarg
-        if exists(time_kwarg):
+        if EINOPS_AVAILABLE:
+            times = rearrange(times, '... -> (...)')
+        else:
+            times = times.flatten()
+
+        if times.numel() == 1:
             if EINOPS_AVAILABLE:
-                times = rearrange(times, '... -> (...)')
+                times = repeat(times, '1 -> b', b=batch)
             else:
-                times = times.flatten()
+                times = times.expand(batch)
 
-            if times.numel() == 1:
-                if EINOPS_AVAILABLE:
-                    times = repeat(times, '1 -> b', b=batch)
-                else:
-                    times = times.expand(batch)
-
-            model_kwargs.update(**{time_kwarg: times})
-
-        output = model(noised, **model_kwargs)
+        # Check if using DiT architecture (requires tuple input: (x, t, r))
+        if hasattr(model, 'x_embedder'):  # DiT architecture
+            # For DiT, use r = t (same as MeanFlow)
+            r = times
+            # Network forward pass: DiT expects (x, t, r) tuple
+            output = model((noised, times, r))
+        else:
+            # For other architectures (e.g., FlowUNet), use keyword arguments
+            time_kwarg = self.time_cond_kwarg
+            if exists(time_kwarg):
+                model_kwargs.update(**{time_kwarg: times})
+            output = model(noised, **model_kwargs)
 
         # Derive flow depending on objective
         if self.predict == 'flow':
@@ -431,8 +438,35 @@ class RectifiedFlowModel(FlowModel):
         # Normalize
         lq_norm = self.data_normalize_fn(lq_upsampled)
 
-        # Pad to be divisible by 8
-        lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_norm, divisor=8)
+        # Check if using DiT architecture (has fixed input_size)
+        model_input_size = None
+        if hasattr(model_to_use, 'x_embedder'):  # DiT architecture
+            model_input_size = self.opt['network_g'].get('input_size', None)
+
+        if model_input_size is not None:
+            # DiT requires fixed input size: crop or pad to match
+            _, _, h, w = lq_norm.shape
+            if h != model_input_size or w != model_input_size:
+                # Center crop if larger, or pad if smaller
+                if h >= model_input_size and w >= model_input_size:
+                    start_h = (h - model_input_size) // 2
+                    start_w = (w - model_input_size) // 2
+                    lq_padded = lq_norm[:, :, start_h:start_h+model_input_size, start_w:start_w+model_input_size]
+                    original_h, original_w = model_input_size, model_input_size
+                else:
+                    # Pad to model_input_size
+                    pad_h = (model_input_size - h) // 2
+                    pad_w = (model_input_size - w) // 2
+                    pad_h2 = model_input_size - h - pad_h
+                    pad_w2 = model_input_size - w - pad_w
+                    lq_padded = F.pad(lq_norm, (pad_w, pad_w2, pad_h, pad_h2), mode='reflect')
+                    original_h, original_w = h, w
+            else:
+                lq_padded = lq_norm
+                original_h, original_w = h, w
+        else:
+            # For other architectures (e.g., FlowUNet), pad to be divisible by 8
+            lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_norm, divisor=8)
 
         # Use direct forward pass: predict flow at t=1
         times = torch.ones(lq.shape[0], device=self.device)
@@ -453,8 +487,33 @@ class RectifiedFlowModel(FlowModel):
         else:
             output_padded = torch.clamp(output_padded, -1.0, 1.0)
 
-        # Crop back
-        output = self._crop_from_padded(output_padded, original_h, original_w)
+        # Crop back (handle DiT fixed input size)
+        if hasattr(model_to_use, 'x_embedder'):  # DiT architecture
+            model_input_size = self.opt['network_g'].get('input_size', None)
+            if model_input_size is not None:
+                _, _, h_out, w_out = output_padded.shape
+                _, _, h_in, w_in = lq_norm.shape
+                if h_out == model_input_size and w_out == model_input_size and (h_in != model_input_size or w_in != model_input_size):
+                    # We cropped/padded, need to restore original size
+                    if h_in >= model_input_size and w_in >= model_input_size:
+                        # Was cropped, need to pad back
+                        pad_h = (h_in - model_input_size) // 2
+                        pad_w = (w_in - model_input_size) // 2
+                        pad_h2 = h_in - model_input_size - pad_h
+                        pad_w2 = w_in - model_input_size - pad_w
+                        output = F.pad(output_padded, (pad_w, pad_w2, pad_h, pad_h2), mode='reflect')
+                    else:
+                        # Was padded, need to crop back
+                        pad_h = (model_input_size - h_in) // 2
+                        pad_w = (model_input_size - w_in) // 2
+                        output = output_padded[:, :, pad_h:pad_h+h_in, pad_w:pad_w+w_in]
+                else:
+                    output = output_padded
+            else:
+                output = output_padded
+        else:
+            # For other architectures, use standard crop
+            output = self._crop_from_padded(output_padded, original_h, original_w)
 
         # Unnormalize
         output = self.data_unnormalize_fn(output)
@@ -472,26 +531,32 @@ class RectifiedFlowModel(FlowModel):
         # Predict flow using network
         # Prepare time conditioning for network
         times = self.t
-        if exists(self.time_cond_kwarg):
-            if EINOPS_AVAILABLE:
-                times_flat = rearrange(times, '... -> (...)')
-            else:
-                times_flat = times.flatten()
-
-            if times_flat.numel() == 1:
-                if EINOPS_AVAILABLE:
-                    times_expanded = repeat(times_flat, '1 -> b', b=self.xt.shape[0])
-                else:
-                    times_expanded = times_flat.expand(self.xt.shape[0])
-            else:
-                times_expanded = times_flat
-
-            model_kwargs = {self.time_cond_kwarg: times_expanded}
+        if EINOPS_AVAILABLE:
+            times_flat = rearrange(times, '... -> (...)')
         else:
-            model_kwargs = {}
+            times_flat = times.flatten()
 
-        # Network forward pass
-        model_output = self.net_g(self.xt, **model_kwargs)
+        if times_flat.numel() == 1:
+            if EINOPS_AVAILABLE:
+                times_expanded = repeat(times_flat, '1 -> b', b=self.xt.shape[0])
+            else:
+                times_expanded = times_flat.expand(self.xt.shape[0])
+        else:
+            times_expanded = times_flat
+
+        # Check if using DiT architecture (requires tuple input: (x, t, r))
+        if hasattr(self.net_g, 'x_embedder'):  # DiT architecture
+            # For DiT, use r = t (same as MeanFlow)
+            r = times_expanded
+            # Network forward pass: DiT expects (x, t, r) tuple
+            model_output = self.net_g((self.xt, times_expanded, r))
+        else:
+            # For other architectures (e.g., FlowUNet), use keyword arguments
+            if exists(self.time_cond_kwarg):
+                model_kwargs = {self.time_cond_kwarg: times_expanded}
+            else:
+                model_kwargs = {}
+            model_output = self.net_g(self.xt, **model_kwargs)
 
         # Derive flow from model output
         if self.predict == 'flow':
