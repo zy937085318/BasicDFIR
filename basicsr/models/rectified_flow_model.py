@@ -452,7 +452,8 @@ class RectifiedFlowModel(FlowModel):
                     start_h = (h - model_input_size) // 2
                     start_w = (w - model_input_size) // 2
                     lq_padded = lq_norm[:, :, start_h:start_h+model_input_size, start_w:start_w+model_input_size]
-                    original_h, original_w = model_input_size, model_input_size
+                    # Keep original size for later padding back
+                    original_h, original_w = h, w
                 else:
                     # Pad to model_input_size
                     pad_h = (model_input_size - h) // 2
@@ -496,12 +497,14 @@ class RectifiedFlowModel(FlowModel):
                 if h_out == model_input_size and w_out == model_input_size and (h_in != model_input_size or w_in != model_input_size):
                     # We cropped/padded, need to restore original size
                     if h_in >= model_input_size and w_in >= model_input_size:
-                        # Was cropped, need to pad back
-                        pad_h = (h_in - model_input_size) // 2
-                        pad_w = (w_in - model_input_size) // 2
-                        pad_h2 = h_in - model_input_size - pad_h
-                        pad_w2 = w_in - model_input_size - pad_w
-                        output = F.pad(output_padded, (pad_w, pad_w2, pad_h, pad_h2), mode='reflect')
+                        # Was cropped, need to place result back in original position
+                        # Create output with original size
+                        output = torch.zeros_like(lq_norm)
+                        # Calculate original crop position
+                        start_h = (h_in - model_input_size) // 2
+                        start_w = (w_in - model_input_size) // 2
+                        # Place processed result back in original image
+                        output[:, :, start_h:start_h+model_input_size, start_w:start_w+model_input_size] = output_padded
                     else:
                         # Was padded, need to crop back
                         pad_h = (model_input_size - h_in) // 2
