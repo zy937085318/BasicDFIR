@@ -126,6 +126,11 @@ class RectifiedFlowModel(FlowModel):
         # Get model configuration before calling parent init
         model_opt = opt.get('rectified_flow', {})
 
+        # Consistency flags must be available during parent __init__ / training init
+        # because FlowModel/SRModel will call self.init_training_settings early.
+        # Set them before super().__init__ to avoid AttributeError.
+        self.use_consistency = model_opt.get('use_consistency', False)
+
         # Call parent FlowModel __init__ which will build network
         super(RectifiedFlowModel, self).__init__(opt)
 
@@ -157,7 +162,6 @@ class RectifiedFlowModel(FlowModel):
         self.clip_flow_values = model_opt.get('clip_flow_values', (-3., 3))
 
         # Consistency flow matching
-        self.use_consistency = model_opt.get('use_consistency', False)
         self.consistency_decay = model_opt.get('consistency_decay', 0.9999)
         self.consistency_velocity_match_alpha = model_opt.get('consistency_velocity_match_alpha', 1e-5)
         self.consistency_delta_time = model_opt.get('consistency_delta_time', 1e-3)
