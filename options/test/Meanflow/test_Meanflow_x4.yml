@@ -1,0 +1,65 @@
+# MeanFlow Model Test Configuration
+# General settings
+name: test_Meanflow_x4
+model_type: MeanFlowModel
+scale: 4
+num_gpu: 1
+manual_seed: 0
+
+# Network structures
+network_g:
+  type: DiT
+  input_size: 128
+  patch_size: 4
+  in_channels: 3
+  dim: 384
+  depth: 12
+  num_heads: 16
+  mlp_ratio: 4.0
+  num_register_tokens: 4
+  num_classes: ~
+
+# Path
+# IMPORTANT: You need to train the model first using train_meanflow.sh, then update the path below
+# After training, the model will be saved in: experiments/<experiment_name>/models/net_g_latest.pth
+# Example path: experiments/meanflowSR_20251207_123456_123456/models/net_g_latest.pth
+# To find your model path, check the experiments directory after training
+path:
+  pretrain_network_g: ~  # REQUIRED: Set to your trained model path before running benchmark
+  strict_load_g: true
+
+# Dataset settings - Standard SR benchmarks
+datasets:
+  test_Set5:
+    name: Set5
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Set5/GTmod12
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Set5/LRbicx4
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+  test_Set14:
+    name: Set14
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Set14/GTmod12
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Set14/LRbicx4
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+# Validation settings
+val:
+  suffix: ~
+  save_img: true
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 4
+      test_y_channel: false
+
