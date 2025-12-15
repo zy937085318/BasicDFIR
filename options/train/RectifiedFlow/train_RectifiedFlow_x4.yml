@@ -81,10 +81,10 @@ path:
 
 # Training settings
 train:
-  ema_decay: 0.0  # Set to 0 if using consistency flow matching
+  ema_decay: 0.999  # Set to 0 if using consistency flow matching
   optim_g:
     type: Adam
-    lr: !!float 3e-4
+    lr: !!float 2e-4
     weight_decay: 0
     betas: [0.9, 0.99]
 
