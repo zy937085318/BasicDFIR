@@ -2,11 +2,34 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
-from timm.models.vision_transformer import PatchEmbed, Mlp
-from timm.models.vision_transformer import Attention
 import torch.nn.functional as F
-from einops import repeat, pack, unpack
 from torch.cuda.amp import autocast
+
+try:
+    from timm.models.vision_transformer import PatchEmbed, Mlp
+    from timm.models.vision_transformer import Attention
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
+    # Create dummy classes to prevent import errors
+    class PatchEmbed:
+        pass
+    class Mlp:
+        pass
+    class Attention:
+        pass
+
+try:
+    from einops import repeat, pack, unpack
+    EINOPS_AVAILABLE = True
+except ImportError:
+    EINOPS_AVAILABLE = False
+    def repeat(*args, **kwargs):
+        raise ImportError("einops is required for DIT architecture")
+    def pack(*args, **kwargs):
+        raise ImportError("einops is required for DIT architecture")
+    def unpack(*args, **kwargs):
+        raise ImportError("einops is required for DIT architecture")
 
 from basicsr.utils.registry import ARCH_REGISTRY
 
@@ -120,6 +143,16 @@ class DiT(nn.Module):
         num_register_tokens=4,
         num_classes=1000,
     ):
+        if not TIMM_AVAILABLE:
+            raise ImportError(
+                "timm is required for DiT architecture. "
+                "Please install it with: pip install timm"
+            )
+        if not EINOPS_AVAILABLE:
+            raise ImportError(
+                "einops is required for DiT architecture. "
+                "Please install it with: pip install einops"
+            )
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = in_channels

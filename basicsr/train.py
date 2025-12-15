@@ -106,13 +106,23 @@ def train_pipeline(root_path):
             mkdir_and_rename(osp.join(opt['root_path'], 'tb_logger', opt['name']))
 
     # Create result directory for training comparison images with training info
-    # Format: result_<model_name>_<dataset_name>_<scale>
+    # Format: result_<model_name>_<dataset_name>_<scale>_<timestamp>_<microsecond>
+    # Each training run gets a unique folder with timestamp and microsecond
     model_name = opt.get('name', 'unknown')
     dataset_name = opt['datasets']['train'].get('name', 'unknown')
     scale = opt.get('scale', 4)
-    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}"
+    timestamp = get_time_str()
+    # Add microseconds to ensure uniqueness
+    microsecond = int((time.time() % 1) * 1000000)
+    result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}_{microsecond:06d}"
     result_dir = osp.join(opt['path']['experiments_root'], result_dir_name)
     if opt['rank'] == 0:
+        # Ensure directory doesn't exist, if it does, add more random suffix
+        counter = 0
+        original_result_dir = result_dir
+        while osp.exists(result_dir):
+            counter += 1
+            result_dir = f"{original_result_dir}_{counter}"
         os.makedirs(result_dir, exist_ok=True)
 
     # copy the yml file to the experiment root
@@ -124,6 +134,8 @@ def train_pipeline(root_path):
     logger = get_root_logger(logger_name='basicsr', log_level=logging.INFO, log_file=log_file)
     logger.info(get_env_info())
     logger.info(dict2str(opt))
+    if opt['rank'] == 0:
+        logger.info(f'Training result images will be saved to: {result_dir}')
     # initialize wandb and tb loggers
     tb_logger = init_tb_loggers(opt)
 
@@ -192,25 +204,26 @@ def train_pipeline(root_path):
                 msg_logger(log_vars)
 
             # Save training result comparison images every 100 iterations
-            if current_iter % 100 == 0 and opt['rank'] == 0:
-                # Set network to eval mode
-                if hasattr(model, 'net_g'):
-                    model.net_g.eval()
-                with torch.no_grad():
-                    # Get a sample from current batch (use a copy to avoid affecting training)
-                    sample_data = {}
-                    sample_data['lq'] = train_data['lq'][:1].clone()  # Take first image
-                    if 'gt' in train_data:
-                        sample_data['gt'] = train_data['gt'][:1].clone()
-                    model.feed_data(sample_data)
-                    # Use test() method which handles sampling correctly
-                    # This will use GT shape if available and start from upsampled LQ
-                    model.test()
-                    if hasattr(model, 'save_training_results'):
-                        model.save_training_results(current_iter, result_dir)
-                # Set network back to train mode
-                if hasattr(model, 'net_g'):
-                    model.net_g.train()
+            # Disabled: Commented out to avoid generating validation images every 100 steps
+            # if current_iter % 100 == 0 and opt['rank'] == 0:
+            #     # Set network to eval mode
+            #     if hasattr(model, 'net_g'):
+            #         model.net_g.eval()
+            #     with torch.no_grad():
+            #         # Get a sample from current batch (use a copy to avoid affecting training)
+            #         sample_data = {}
+            #         sample_data['lq'] = train_data['lq'][:1].clone()  # Take first image
+            #         if 'gt' in train_data:
+            #             sample_data['gt'] = train_data['gt'][:1].clone()
+            #         model.feed_data(sample_data)
+            #         # Use test() method which handles sampling correctly
+            #         # This will use GT shape if available and start from upsampled LQ
+            #         model.test()
+            #         if hasattr(model, 'save_training_results'):
+            #             model.save_training_results(current_iter, result_dir)
+            #     # Set network back to train mode
+            #     if hasattr(model, 'net_g'):
+            #         model.net_g.train()
 
             # save models and training states
             if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
@@ -220,7 +233,11 @@ def train_pipeline(root_path):
             # validation
             if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
                 if len(val_loaders) > 1:
-                    logger.warning('Multiple validation datasets are *only* supported by SRModel.')
+                    # Check if model supports multiple validation datasets
+                    # SRModel and its subclasses (like FlowModel) support multiple validation datasets
+                    from basicsr.models.sr_model import SRModel
+                    if not isinstance(model, SRModel):
+                        logger.warning('Multiple validation datasets are *only* supported by SRModel and its subclasses.')
                 for val_loader in val_loaders:
                     model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
 

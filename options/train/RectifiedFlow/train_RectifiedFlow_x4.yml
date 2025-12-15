@@ -1,6 +1,6 @@
 # Rectified Flow Training Configuration
 # General settings
-name: RectifiedFlow_x4_DIV2K_300k
+name: RectifiedFlow_x4_DF2K_200k
 model_type: RectifiedFlowModel
 scale: 4
 num_gpu: 1  # set num_gpu: 0 for cpu mode
@@ -9,17 +9,17 @@ manual_seed: 10
 # Dataset and data loader settings
 datasets:
   train:
-    name: DIV2K
+    name: DF2K
     type: PairedImageDataset
-#    dataroot_gt: datasets/Set14/GTmod12
-#    dataroot_lq: datasets/Set14/LRbicx4
-    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_HR
-    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_LR_bicubic/X4
+#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_HR
+#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DIV2K/DIV2K_train_LR_bicubic/X4
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DF2K/train_HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DF2K/train_LR_bicubic/X4
     filename_tmpl: '{}'
     io_backend:
       type: disk
 
-    gt_size: 192
+    gt_size: 128  # Match DiT input_size
     use_hflip: true
     use_rot: true
 
@@ -32,25 +32,23 @@ datasets:
   val:
     name: Set5
     type: PairedImageDataset
-    dataroot_gt: datasets/Set5/GTmod12
-    dataroot_lq: datasets/Set5/LRbicx4
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/Set5/GTmod12
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/Set5/LRbicx4
     io_backend:
       type: disk
 
 # Network structures
 network_g:
-  type: FlowUNet
-  dim: 64
-  init_dim: 64
-  channels: 3
-  dim_mults: [1, 2, 4, 8]
-  mean_variance_net: false
-  learned_sinusoidal_cond: false
-  random_fourier_features: false
-  dropout: 0.0
-  attn_dim_head: 32
-  attn_heads: 4
-  num_residual_streams: 2
+  type: DiT
+  input_size: 128
+  patch_size: 4
+  in_channels: 3
+  dim: 384
+  depth: 12
+  num_heads: 16
+  mlp_ratio: 4.0
+  num_register_tokens: 4
+  num_classes: ~
 
 # Rectified Flow specific settings
 rectified_flow:
@@ -73,6 +71,7 @@ rectified_flow:
   consistency_loss_weight: 1.0
   immiscible: false
   ema_update_after_step: 100
+  train_noise_std: 0.0001
 
 # Path
 path:
@@ -102,9 +101,9 @@ train:
     type: MSELoss
     loss_weight: 1.0
     # Alternative loss options:
-    # type: PseudoHuberLoss
-    # data_dim: 3
-    # loss_weight: 1.0
+#     type: PseudoHuberLoss
+#     data_dim: 3
+#     loss_weight: 1.0
     #
     # type: PseudoHuberLossWithLPIPS
     # data_dim: 3
@@ -113,7 +112,7 @@ train:
 
 # Validation settings
 val:
-  val_freq: !!float 1e3  # Validate every 1000 iterations
+  val_freq: !!float 5e3  # Validate every 1000 iterations
   save_img: true
 
   metrics:
@@ -125,6 +124,9 @@ val:
       type: calculate_ssim
       crop_border: 4
       test_y_channel: false
+    fid:
+      type: calculate_fid
+      crop_border: 4
 
 # Logging settings
 logger:

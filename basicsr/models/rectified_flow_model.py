@@ -36,6 +36,7 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
+    linear_sum_assignment = None
 
 def from_numpy(arr):
     return torch.from_numpy(arr)
@@ -169,6 +170,9 @@ class RectifiedFlowModel(FlowModel):
         # Immiscible diffusion
         self.immiscible = model_opt.get('immiscible', False)
 
+        # Data augmentation: add small Gaussian noise to x_0 and gt during training
+        self.train_noise_std = model_opt.get('train_noise_std', 0.01)  # Default: 0.01 (1% noise)
+
         # Data shape (will be set during first forward)
         self.data_shape = None
 
@@ -189,66 +193,79 @@ class RectifiedFlowModel(FlowModel):
     def init_training_settings(self):
         self.net_g.train()
         train_opt = self.opt['train']
-
-        # Setup EMA (if not using consistency)
         self.ema_decay = train_opt.get('ema_decay', 0)
         if self.ema_decay > 0 and not self.use_consistency:
             logger = get_root_logger()
             logger.info(f'Use Exponential Moving Average with decay: {self.ema_decay}')
             self.net_g_ema = build_network(self.opt['network_g']).to(self.device)
+            # load pretrained model
             load_path = self.opt['path'].get('pretrain_network_g', None)
             if load_path is not None:
                 self.load_network(self.net_g_ema, load_path, self.opt['path'].get('strict_load_g', True), 'params_ema')
             else:
-                self.model_ema(0)
+                self.model_ema(0)  # copy net_g weight
             self.net_g_ema.eval()
-
-        # Define losses
+        # define losses
         if train_opt.get('flow_opt'):
-            self.cri_flow = build_loss(train_opt['flow_opt']).to(self.device)
+            self.flow_loss = build_loss(train_opt['flow_opt']).to(self.device)
         else:
             # Default to MSE loss
-            self.cri_flow = build_loss({'type': 'MSELoss', 'loss_weight': 1.0}).to(self.device)
+            self.flow_loss = build_loss({'type': 'MSELoss', 'loss_weight': 1.0}).to(self.device)
+        if train_opt.get('pixel_opt'):
+            self.cri_pix = build_loss(train_opt['pixel_opt']).to(self.device)
+        else:
+            self.cri_pix = None
+        if train_opt.get('perceptual_opt'):
+            self.cri_perceptual = build_loss(train_opt['perceptual_opt']).to(self.device)
+        else:
+            self.cri_perceptual = None
+        if self.flow_loss is None and self.cri_pix is None and self.cri_perceptual is None:
+            raise ValueError('All losses (flow, pixel, perceptual) are None.')
 
-        # Set up optimizers and schedulers
+        # Cache whether flow_loss accepts additional arguments (performance optimization)
+        self._flow_loss_accepts_extra_args = False
+        if hasattr(self.flow_loss, 'forward'):
+            try:
+                import inspect
+                sig = inspect.signature(self.flow_loss.forward)
+                self._flow_loss_accepts_extra_args = 'pred_data' in sig.parameters
+            except:
+                # Fallback: check co_varnames only once
+                if hasattr(self.flow_loss.forward, '__code__'):
+                    self._flow_loss_accepts_extra_args = 'pred_data' in self.flow_loss.forward.__code__.co_varnames
+
+        # set up optimizers and schedulers
         self.setup_optimizers()
         self.setup_schedulers()
-
-    def setup_optimizers(self):
-        train_opt = self.opt['train']
-        optim_params = []
-        for k, v in self.net_g.named_parameters():
-            if v.requires_grad:
-                optim_params.append(v)
-            else:
-                logger = get_root_logger()
-                logger.warning(f'Params {k} will not be optimized.')
-
-        optim_type = train_opt['optim_g'].pop('type')
-        self.optimizer_g = self.get_optimizer(optim_type, optim_params, **train_opt['optim_g'])
-        self.optimizers.append(self.optimizer_g)
 
     def predict_flow(self, model: Module, noised, *, times, eps=1e-10, **model_kwargs):
         """Returns the model output as well as the derived flow"""
         batch = noised.shape[0]
 
         # Prepare time conditioning
-        time_kwarg = self.time_cond_kwarg
-        if exists(time_kwarg):
+        if EINOPS_AVAILABLE:
+            times = rearrange(times, '... -> (...)')
+        else:
+            times = times.flatten()
+
+        if times.numel() == 1:
             if EINOPS_AVAILABLE:
-                times = rearrange(times, '... -> (...)')
+                times = repeat(times, '1 -> b', b=batch)
             else:
-                times = times.flatten()
+                times = times.expand(batch)
 
-            if times.numel() == 1:
-                if EINOPS_AVAILABLE:
-                    times = repeat(times, '1 -> b', b=batch)
-                else:
-                    times = times.expand(batch)
-
-            model_kwargs.update(**{time_kwarg: times})
-
-        output = model(noised, **model_kwargs)
+        # Check if using DiT architecture (requires tuple input: (x, t, r))
+        if hasattr(model, 'x_embedder'):  # DiT architecture
+            # For DiT, use r = t (same as MeanFlow)
+            r = times
+            # Network forward pass: DiT expects (x, t, r) tuple
+            output = model((noised, times, r))
+        else:
+            # For other architectures (e.g., FlowUNet), use keyword arguments
+            time_kwarg = self.time_cond_kwarg
+            if exists(time_kwarg):
+                model_kwargs.update(**{time_kwarg: times})
+            output = model(noised, **model_kwargs)
 
         # Derive flow depending on objective
         if self.predict == 'flow':
@@ -266,17 +283,397 @@ class RectifiedFlowModel(FlowModel):
         self.lq = data['lq'].to(self.device)
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
+        # Clear cache when new data arrives (will be recomputed in flow_interpolation)
+        if hasattr(self, '_cached_x_0_base'):
+            delattr(self, '_cached_x_0_base')
+        if hasattr(self, '_cached_x_1_base'):
+            delattr(self, '_cached_x_1_base')
+        if hasattr(self, '_cached_lq_id'):
+            delattr(self, '_cached_lq_id')
+        if hasattr(self, '_cached_gt_id'):
+            delattr(self, '_cached_gt_id')
 
+    '''
+    define the interpolation processing of flow-based method. Should be instanced for different flow-based method.
+    input: time step t
+    '''
+    def flow_interpolation(self, t, r=None):
+        """Rectified Flow interpolation: x_t = x_0 + t * (x_1 - x_0)"""
+        batch = self.lq.shape[0]
+
+        # Cache normalized and upsampled data to avoid recomputing every iteration
+        # Use data pointer/id to check if data actually changed (more reliable than shape)
+        current_lq_id = id(self.lq) if hasattr(self, 'gt') and self.gt is not None else id(self.lq)
+        current_gt_id = id(self.gt) if hasattr(self, 'gt') and self.gt is not None else None
+
+        if (not hasattr(self, '_cached_x_0') or
+            not hasattr(self, '_cached_lq_id') or
+            self._cached_lq_id != current_lq_id or
+            (current_gt_id is not None and (not hasattr(self, '_cached_gt_id') or self._cached_gt_id != current_gt_id))):
+            # Normalize LQ and GT
+            lq_norm = self.data_normalize_fn(self.lq)
+
+            # Determine target shape
+            if hasattr(self, 'gt') and self.gt is not None:
+                gt_norm = self.data_normalize_fn(self.gt)
+                target_h, target_w = self.gt.shape[-2], self.gt.shape[-1]
+                # Upsample LQ to GT size
+                x_0_base = F.interpolate(lq_norm, size=(target_h, target_w), mode='bilinear', align_corners=False)
+                x_1_base = gt_norm
+            else:
+                # If no GT, use LQ as both start and end
+                x_0_base = lq_norm
+                x_1_base = lq_norm
+
+            # Cache base values (without noise) for reuse
+            self._cached_x_0_base = x_0_base
+            self._cached_x_1_base = x_1_base
+            self._cached_lq_id = current_lq_id
+            if current_gt_id is not None:
+                self._cached_gt_id = current_gt_id
+        else:
+            # Reuse cached base values
+            x_0_base = self._cached_x_0_base
+            x_1_base = self._cached_x_1_base
+
+        # Add small Gaussian noise during training for data augmentation
+        # Add noise every time (not cached) to ensure randomness in each iteration
+        if self.opt.get('is_train', False) and self.train_noise_std > 0:
+            # Generate noise with same shape as x_0 and x_1
+            noise_x0 = torch.randn_like(x_0_base) * self.train_noise_std
+            noise_x1 = torch.randn_like(x_1_base) * self.train_noise_std
+            x_0 = x_0_base + noise_x0
+            x_1 = x_1_base + noise_x1
+            # Clip to valid range after adding noise
+            if hasattr(self, 'clip_values'):
+                x_0 = torch.clamp(x_0, self.clip_values[0], self.clip_values[1])
+                x_1 = torch.clamp(x_1, self.clip_values[0], self.clip_values[1])
+            else:
+                x_0 = torch.clamp(x_0, -1.0, 1.0)
+                x_1 = torch.clamp(x_1, -1.0, 1.0)
+        else:
+            # No noise during testing
+            x_0 = x_0_base
+            x_1 = x_1_base
+
+        # Apply noise schedule to time
+        t_scheduled = self.noise_schedule(t)
+
+        # Linear interpolation: x_t = x_0 + t * (x_1 - x_0)
+        if isinstance(t_scheduled, torch.Tensor):
+            if t_scheduled.dim() == 0:
+                t_scheduled = t_scheduled.unsqueeze(0)
+            if t_scheduled.shape[0] == 1 and batch > 1:
+                t_scheduled = t_scheduled.expand(batch)
+            t_scheduled = append_dims(t_scheduled, x_0.ndim - 1)
+
+        x_t = x_0.lerp(x_1, t_scheduled)
+
+        # Store for later use
+        self.x_0 = x_0
+        self.x_1 = x_1
+        self.t_scheduled = t_scheduled
+
+        return x_t
+
+    '''
+    define the timestep sampling method.
+    '''
+    def sample_timestep(self):
+        """Sample random time step for training"""
+        batch = self.lq.shape[0]
+        self.t = torch.rand(batch, device=self.device)
+        # Adjust times for consistency loss
+        if self.use_consistency:
+            self.t = self.t * (1. - self.consistency_delta_time)
+        return self.t
+
+    '''
+    main processing of flow.
+    '''
+    def flow_process(self):
+        """Main flow processing: sample timestep and interpolate"""
+        self.sample_timestep()
+        self.xt = self.flow_interpolation(self.t)
+
+    '''
+    sample image with flow-based ODE.
+    '''
+    def sample_image(self, lq=None, model=None, ema=False):
+        """Sample image using flow-based ODE solver"""
+        if lq is None:
+            lq = self.lq
+
+        # Determine which model to use
+        if model is not None:
+            model_to_use = model
+        elif ema and hasattr(self, 'net_g_ema') and not self.use_consistency:
+            model_to_use = self.net_g_ema
+        elif self.use_consistency and hasattr(self, 'ema_model'):
+            model_to_use = self.ema_model.ema_model
+        else:
+            model_to_use = self.net_g
+
+        # For super-resolution, use direct forward pass for stability
+        # (ODE sampling can be unstable during early training)
+        if hasattr(self, 'gt') and self.gt is not None:
+            gt_shape = self.gt.shape[1:]
+        else:
+            # Estimate GT shape from scale
+            scale = self.opt.get('scale', 4)
+            gt_shape = (
+                lq.shape[1],  # channels
+                int(lq.shape[2] * scale),  # height
+                int(lq.shape[3] * scale)   # width
+            )
+
+        # Upsample LQ to target size
+        lq_upsampled = F.interpolate(
+            lq,
+            size=(gt_shape[-2], gt_shape[-1]),
+            mode='bilinear',
+            align_corners=False
+        )
+
+        # Normalize
+        lq_norm = self.data_normalize_fn(lq_upsampled)
+
+        # Check if using DiT architecture (has fixed input_size)
+        model_input_size = None
+        if hasattr(model_to_use, 'x_embedder'):  # DiT architecture
+            model_input_size = self.opt['network_g'].get('input_size', None)
+
+        if model_input_size is not None:
+            # DiT requires fixed input size: crop or pad to match
+            _, _, h, w = lq_norm.shape
+            if h != model_input_size or w != model_input_size:
+                # Center crop if larger, or pad if smaller
+                if h >= model_input_size and w >= model_input_size:
+                    start_h = (h - model_input_size) // 2
+                    start_w = (w - model_input_size) // 2
+                    lq_padded = lq_norm[:, :, start_h:start_h+model_input_size, start_w:start_w+model_input_size]
+                    # Keep original size for later padding back
+                    original_h, original_w = h, w
+                else:
+                    # Pad to model_input_size
+                    pad_h = (model_input_size - h) // 2
+                    pad_w = (model_input_size - w) // 2
+                    pad_h2 = model_input_size - h - pad_h
+                    pad_w2 = model_input_size - w - pad_w
+                    lq_padded = F.pad(lq_norm, (pad_w, pad_w2, pad_h, pad_h2), mode='reflect')
+                    original_h, original_w = h, w
+            else:
+                lq_padded = lq_norm
+                original_h, original_w = h, w
+        else:
+            # For other architectures (e.g., FlowUNet), pad to be divisible by 8
+            lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_norm, divisor=8)
+
+        # Use direct forward pass: predict flow at t=1
+        times = torch.ones(lq.shape[0], device=self.device)
+        _, flow = self.predict_flow(model_to_use, lq_padded, times=times)
+
+        # Clip flow
+        if hasattr(self, 'clip_flow_values'):
+            flow = torch.clamp(flow, self.clip_flow_values[0], self.clip_flow_values[1])
+        else:
+            flow = torch.clamp(flow, -2.0, 2.0)
+
+        # Apply flow: x_1 = x_0 + flow
+        output_padded = lq_padded + flow
+
+        # Clip output
+        if hasattr(self, 'clip_values'):
+            output_padded = torch.clamp(output_padded, self.clip_values[0], self.clip_values[1])
+        else:
+            output_padded = torch.clamp(output_padded, -1.0, 1.0)
+
+        # Crop back (handle DiT fixed input size)
+        if hasattr(model_to_use, 'x_embedder'):  # DiT architecture
+            model_input_size = self.opt['network_g'].get('input_size', None)
+            if model_input_size is not None:
+                _, _, h_out, w_out = output_padded.shape
+                _, _, h_in, w_in = lq_norm.shape
+                if h_out == model_input_size and w_out == model_input_size and (h_in != model_input_size or w_in != model_input_size):
+                    # We cropped/padded, need to restore original size
+                    if h_in >= model_input_size and w_in >= model_input_size:
+                        # Was cropped, need to place result back in original position
+                        # Create output with original size
+                        output = torch.zeros_like(lq_norm)
+                        # Calculate original crop position
+                        start_h = (h_in - model_input_size) // 2
+                        start_w = (w_in - model_input_size) // 2
+                        # Place processed result back in original image
+                        output[:, :, start_h:start_h+model_input_size, start_w:start_w+model_input_size] = output_padded
+                    else:
+                        # Was padded, need to crop back
+                        pad_h = (model_input_size - h_in) // 2
+                        pad_w = (model_input_size - w_in) // 2
+                        output = output_padded[:, :, pad_h:pad_h+h_in, pad_w:pad_w+w_in]
+                else:
+                    output = output_padded
+            else:
+                output = output_padded
+        else:
+            # For other architectures, use standard crop
+            output = self._crop_from_padded(output_padded, original_h, original_w)
+
+        # Unnormalize
+        output = self.data_unnormalize_fn(output)
+        output = torch.clamp(output, 0.0, 1.0)
+
+        return output
+
+    '''
+    Add flow-based loss function.
+    '''
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
+        self.flow_process()
 
-        # Forward pass
-        loss, loss_dict = self._forward_rectified_flow(self.lq, self.gt if hasattr(self, 'gt') else None, return_loss_breakdown=True)
+        # Predict flow using network
+        # Prepare time conditioning for network
+        times = self.t
+        if EINOPS_AVAILABLE:
+            times_flat = rearrange(times, '... -> (...)')
+        else:
+            times_flat = times.flatten()
 
-        loss.backward()
+        if times_flat.numel() == 1:
+            if EINOPS_AVAILABLE:
+                times_expanded = repeat(times_flat, '1 -> b', b=self.xt.shape[0])
+            else:
+                times_expanded = times_flat.expand(self.xt.shape[0])
+        else:
+            times_expanded = times_flat
+
+        # Check if using DiT architecture (requires tuple input: (x, t, r))
+        if hasattr(self.net_g, 'x_embedder'):  # DiT architecture
+            # For DiT, use r = t (same as MeanFlow)
+            r = times_expanded
+            # Network forward pass: DiT expects (x, t, r) tuple
+            model_output = self.net_g((self.xt, times_expanded, r))
+        else:
+            # For other architectures (e.g., FlowUNet), use keyword arguments
+            if exists(self.time_cond_kwarg):
+                model_kwargs = {self.time_cond_kwarg: times_expanded}
+            else:
+                model_kwargs = {}
+            model_output = self.net_g(self.xt, **model_kwargs)
+
+        # Derive flow from model output
+        if self.predict == 'flow':
+            self.vt_pre = model_output
+        elif self.predict == 'noise':
+            noise = model_output
+            padded_times = append_dims(times_expanded, self.xt.ndim - 1)
+            self.vt_pre = (self.xt - noise) / padded_times.clamp(min=1e-10)
+        else:
+            raise ValueError(f'unknown objective {self.predict}')
+
+        # Handle mean-variance network
+        if self.mean_variance_net:
+            mean, variance = model_output
+            self.vt_pre = torch.normal(mean, variance)
+
+        # Compute target flow: v_t = x_1 - x_0
+        self.vt_tar = self.x_1 - self.x_0
+
+        # Compute predicted data for loss functions that need it
+        pred_data = self.xt + self.vt_pre * (1. - self.t_scheduled)
+
+        # Set output for loss computation
+        self.output = pred_data
+
+        l_total = 0
+        loss_dict = OrderedDict()
+
+        # flow loss
+        if self.flow_loss:
+            # Use cached flag instead of checking every iteration
+            if self._flow_loss_accepts_extra_args:
+                l_flow = self.flow_loss(model_output, self.vt_tar, pred_data=pred_data,
+                                       times=times, data=self.x_1)
+            else:
+                l_flow = self.flow_loss(model_output, self.vt_tar)
+            l_total += l_flow
+            loss_dict['l_flow'] = l_flow
+
+        # pixel loss (if available)
+        if self.cri_pix:
+            l_pix = self.cri_pix(self.output, self.x_1)
+            l_total += l_pix
+            loss_dict['l_pix'] = l_pix
+
+        # perceptual loss (if available)
+        if self.cri_perceptual:
+            l_percep, l_style = self.cri_perceptual(self.output, self.x_1)
+            if l_percep is not None:
+                l_total += l_percep
+                loss_dict['l_percep'] = l_percep
+            if l_style is not None:
+                l_total += l_style
+                loss_dict['l_style'] = l_style
+
+        # Consistency loss (if using consistency flow matching)
+        if self.use_consistency:
+            # Get EMA model prediction
+            delta_t = self.consistency_delta_time
+            ema_times = self.t + delta_t
+            if EINOPS_AVAILABLE:
+                ema_times_flat = rearrange(ema_times, '... -> (...)')
+            else:
+                ema_times_flat = ema_times.flatten()
+
+            if ema_times_flat.numel() == 1:
+                if EINOPS_AVAILABLE:
+                    ema_times_expanded = repeat(ema_times_flat, '1 -> b', b=self.xt.shape[0])
+                else:
+                    ema_times_expanded = ema_times_flat.expand(self.xt.shape[0])
+            else:
+                ema_times_expanded = ema_times_flat
+
+            ema_model_kwargs = {self.time_cond_kwarg: ema_times_expanded}
+            ema_output = self.ema_model.ema_model(self.xt, **ema_model_kwargs)
+
+            if self.predict == 'flow':
+                ema_vt_pre = ema_output
+            elif self.predict == 'noise':
+                ema_noise = ema_output
+                ema_padded_times = append_dims(ema_times_expanded, self.xt.ndim - 1)
+                ema_vt_pre = (self.xt - ema_noise) / ema_padded_times.clamp(min=1e-10)
+
+            if self.mean_variance_net:
+                ema_mean, ema_variance = ema_output
+                ema_vt_pre = torch.normal(ema_mean, ema_variance)
+
+            ema_pred_data = self.xt + ema_vt_pre * (1. - (self.t_scheduled + delta_t))
+
+            data_match_loss = F.mse_loss(pred_data, ema_pred_data)
+            velocity_match_loss = F.mse_loss(self.vt_pre, ema_vt_pre)
+            consistency_loss = data_match_loss + velocity_match_loss * self.consistency_velocity_match_alpha
+
+            l_total += consistency_loss * self.consistency_loss_weight
+            loss_dict['l_data_match'] = data_match_loss
+            loss_dict['l_velocity_match'] = velocity_match_loss
+            loss_dict['l_consistency'] = consistency_loss
+
+        l_total.backward()
         self.optimizer_g.step()
 
-        self.log_dict = self.reduce_loss_dict(loss_dict)
+        # Print loss every 100 iterations
+        if current_iter % 100 == 0:
+            logger = get_root_logger()
+            loss_str = f'[Iter {current_iter}] Losses: '
+            for k, v in loss_dict.items():
+                if isinstance(v, torch.Tensor):
+                    loss_str += f'{k}: {v.item():.6f} '
+                else:
+                    loss_str += f'{k}: {v:.6f} '
+            logger.info(loss_str)
+
+        # Don't log loss values to avoid printing in regular logs
+        self.log_dict = OrderedDict()
 
         # Update EMA
         if self.ema_decay > 0 and not self.use_consistency:
@@ -285,125 +682,6 @@ class RectifiedFlowModel(FlowModel):
         if self.use_consistency:
             self.ema_model.update()
 
-    def _forward_rectified_flow(self, data, gt=None, return_loss_breakdown=False):
-        """Forward pass for rectified flow training"""
-        batch, *data_shape = data.shape
-
-        # Normalize data
-        data = self.data_normalize_fn(data)
-        self.data_shape = default(self.data_shape, data_shape)
-
-        # Use GT if available, otherwise use data
-        target_data = gt if gt is not None else data
-        target_data = self.data_normalize_fn(target_data)
-
-        # Determine target shape (use GT shape if available, otherwise use LQ shape)
-        target_shape = target_data.shape
-        target_h, target_w = target_shape[-2], target_shape[-1]
-
-        # Create x_0 (blurred version)
-        # If GT is available, create x_0 from GT by downscaling and upscaling
-        # Otherwise, create x_0 from LQ
-        if gt is not None:
-            # For super-resolution: create blurred version from GT
-            # Downscale GT by scale factor, then upscale back
-            scale = self.opt.get('scale', 4)
-            downscaled = F.interpolate(target_data, scale_factor=1.0/scale, mode='bilinear', align_corners=False)
-            x_0 = F.interpolate(downscaled, size=(target_h, target_w), mode='bilinear', align_corners=False)
-        else:
-            # If no GT, create x_0 from LQ by downscaling and upscaling
-            original_shape = data.shape
-            # Downscale by 4x
-            downscaled = F.interpolate(data, scale_factor=0.25, mode='bilinear', align_corners=False)
-            # Upscale back to original size
-            x_0 = F.interpolate(downscaled, size=(original_shape[-2], original_shape[-1]),
-                               mode='bilinear', align_corners=False)
-
-        # Immiscible flow (optional)
-        if self.immiscible and SCIPY_AVAILABLE:
-            cost = torch.cdist(target_data.flatten(1), x_0.flatten(1))
-            _, reorder_indices = linear_sum_assignment(cost.cpu())
-            x_0 = x_0[from_numpy(reorder_indices).to(cost.device)]
-
-        # Sample random times
-        times = torch.rand(batch, device=self.device)
-        padded_times = append_dims(times, data.ndim - 1)
-
-        # Adjust times for consistency loss
-        if self.use_consistency:
-            padded_times *= 1. - self.consistency_delta_time
-
-        def get_noised_and_flows(model, t):
-            # Apply noise schedule
-            t = self.noise_schedule(t)
-
-            # Linear interpolation: x_0 -> target_data
-            noised = x_0.lerp(target_data, t)
-
-            # True flow
-            flow = target_data - x_0
-
-            # Model prediction
-            model_output, pred_flow = self.predict_flow(model, noised, times=t)
-
-            # Handle mean-variance network
-            if self.mean_variance_net:
-                mean, variance = model_output
-                pred_flow = torch.normal(mean, variance)
-
-            # Predicted data
-            pred_data = noised + pred_flow * (1. - t)
-
-            return model_output, flow, pred_flow, pred_data
-
-        # Get flows for main model
-        output, flow, pred_flow, pred_data = get_noised_and_flows(self.net_g, padded_times)
-
-        # Get flows for EMA model (if using consistency)
-        if self.use_consistency:
-            delta_t = self.consistency_delta_time
-            ema_output, ema_flow, ema_pred_flow, ema_pred_data = get_noised_and_flows(
-                self.ema_model.ema_model, padded_times + delta_t
-            )
-
-        # Determine target
-        if self.predict == 'flow':
-            target = flow
-        elif self.predict == 'noise':
-            target = x_0
-        else:
-            raise ValueError(f'unknown objective {self.predict}')
-
-        # Main loss
-        if hasattr(self.cri_flow, 'forward') and 'pred_data' in self.cri_flow.forward.__code__.co_varnames:
-            # Loss function that accepts pred_data, times, data
-            main_loss = self.cri_flow(output, target, pred_data=pred_data, times=times, data=target_data)
-        else:
-            main_loss = self.cri_flow(output, target)
-
-        # Consistency loss
-        consistency_loss = data_match_loss = velocity_match_loss = torch.tensor(0.0, device=self.device)
-
-        if self.use_consistency:
-            data_match_loss = F.mse_loss(pred_data, ema_pred_data)
-            velocity_match_loss = F.mse_loss(pred_flow, ema_pred_flow)
-            consistency_loss = data_match_loss + velocity_match_loss * self.consistency_velocity_match_alpha
-
-        # Total loss
-        total_loss = main_loss + consistency_loss * self.consistency_loss_weight
-
-        # Loss dict
-        loss_dict = OrderedDict()
-        loss_dict['l_flow'] = main_loss
-        if self.use_consistency:
-            loss_dict['l_data_match'] = data_match_loss
-            loss_dict['l_velocity_match'] = velocity_match_loss
-            loss_dict['l_consistency'] = consistency_loss
-
-        if not return_loss_breakdown:
-            return total_loss, loss_dict
-
-        return total_loss, loss_dict
 
     @torch.no_grad()
     def sample(
@@ -514,219 +792,6 @@ class RectifiedFlowModel(FlowModel):
         if h > original_h or w > original_w:
             x = x[..., :original_h, :original_w]
         return x
-
-    def test(self):
-        """Test/Inference mode"""
-        # For inference, we sample from the model
-        if hasattr(self, 'net_g_ema') and not self.use_consistency:
-            model_to_use = self.net_g_ema
-        elif self.use_consistency and hasattr(self, 'ema_model'):
-            model_to_use = self.ema_model.ema_model
-        else:
-            model_to_use = self.net_g
-
-        model_to_use.eval()
-        with torch.no_grad():
-            # For super-resolution, use GT shape if available, otherwise estimate from scale
-            if hasattr(self, 'gt') and self.gt is not None:
-                # Use GT shape for sampling (high resolution)
-                gt_shape = self.gt.shape[1:]  # Remove batch dimension
-                try:
-                    import torch.nn.functional as F
-                    # Use direct forward pass instead of sampling for more stable results
-                    # Sampling may produce dark images when model hasn't learned the flow well
-                    lq_upsampled = F.interpolate(
-                        self.lq,
-                        size=(gt_shape[-2], gt_shape[-1]),
-                        mode='bilinear',
-                        align_corners=False
-                    )
-
-                    # Normalize LQ to match training data format
-                    if hasattr(self, 'data_normalize_fn'):
-                        lq_upsampled = self.data_normalize_fn(lq_upsampled)
-
-                    # Pad to be divisible by 8 (UNet requirement)
-                    lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_upsampled, divisor=8)
-
-                    # Use direct forward pass: predict flow at t=1 from upsampled LQ
-                    # This is more stable during early training than ODE sampling
-                    times = torch.ones(self.lq.shape[0], device=self.device)
-                    # Predict flow from upsampled LQ at t=1
-                    _, flow = self.predict_flow(model_to_use, lq_padded, times=times)
-
-                    # Clip flow to prevent extreme values (use tighter bounds)
-                    if hasattr(self, 'clip_flow_values'):
-                        flow = torch.clamp(flow, self.clip_flow_values[0], self.clip_flow_values[1])
-                    else:
-                        # Default tighter bounds to prevent extreme values
-                        flow = torch.clamp(flow, -2.0, 2.0)
-
-                    # Apply flow to get final output: x_1 = x_0 + flow
-                    output_padded = lq_padded + flow
-
-                    # Clip output to valid range before unnormalization
-                    if hasattr(self, 'clip_values'):
-                        output_padded = torch.clamp(output_padded, self.clip_values[0], self.clip_values[1])
-                    else:
-                        output_padded = torch.clamp(output_padded, -1.0, 1.0)
-
-                    # Crop back to original size
-                    self.output = self._crop_from_padded(output_padded, original_h, original_w)
-
-                    # Check for NaN or Inf
-                    if torch.isnan(self.output).any() or torch.isinf(self.output).any():
-                        logger = get_root_logger()
-                        logger.warning("Output contains NaN or Inf. Using upsampled LQ as fallback.")
-                        # Unnormalize lq_upsampled for fallback
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
-                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
-                        else:
-                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
-                    else:
-                        # Unnormalize output
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            self.output = self.data_unnormalize_fn(self.output)
-
-                    # Ensure output is in valid range [0, 1] after unnormalization
-                    self.output = torch.clamp(self.output, 0.0, 1.0)
-
-                    # Additional check: if output is too dark or too bright, use upsampled LQ
-                    output_mean = self.output.mean()
-                    output_std = self.output.std()
-                    if output_mean < 0.01 or output_mean > 0.99 or output_std < 0.01:
-                        logger = get_root_logger()
-                        logger.warning(f"Output appears abnormal (mean={output_mean:.4f}, std={output_std:.4f}). Using upsampled LQ.")
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
-                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
-                        else:
-                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
-                        self.output = torch.clamp(self.output, 0.0, 1.0)
-                except Exception as e:
-                    # Fallback: use direct forward pass
-                    logger = get_root_logger()
-                    logger.warning(f"Direct forward pass failed: {e}. Using simple upsampling.")
-                    import torch.nn.functional as F
-                    lq_upsampled = F.interpolate(
-                        self.lq,
-                        size=(gt_shape[-2], gt_shape[-1]),
-                        mode='bilinear',
-                        align_corners=False
-                    )
-                    self.output = lq_upsampled
-                    if hasattr(self, 'data_unnormalize_fn'):
-                        self.output = self.data_unnormalize_fn(self.output)
-            elif self.data_shape is not None:
-                # Fallback: use stored data_shape (LQ shape)
-                # Estimate GT shape from scale
-                scale = self.opt.get('scale', 4)
-                gt_shape = (
-                    self.data_shape[0],  # channels
-                    int(self.data_shape[1] * scale),  # height
-                    int(self.data_shape[2] * scale)   # width
-                )
-                try:
-                    import torch.nn.functional as F
-                    # Use direct forward pass for more stable results
-                    lq_upsampled = F.interpolate(
-                        self.lq,
-                        size=(gt_shape[-2], gt_shape[-1]),
-                        mode='bilinear',
-                        align_corners=False
-                    )
-
-                    if hasattr(self, 'data_normalize_fn'):
-                        lq_upsampled = self.data_normalize_fn(lq_upsampled)
-
-                    # Pad to be divisible by 8
-                    lq_padded, (original_h, original_w) = self._pad_to_divisible(lq_upsampled, divisor=8)
-
-                    # Use direct forward pass: predict flow at t=1
-                    times = torch.ones(self.lq.shape[0], device=self.device)
-                    _, flow = self.predict_flow(model_to_use, lq_padded, times=times)
-
-                    # Clip flow to prevent extreme values
-                    if hasattr(self, 'clip_flow_values'):
-                        flow = torch.clamp(flow, self.clip_flow_values[0], self.clip_flow_values[1])
-                    else:
-                        flow = torch.clamp(flow, -2.0, 2.0)
-
-                    output_padded = lq_padded + flow
-
-                    # Clip output to valid range before unnormalization
-                    if hasattr(self, 'clip_values'):
-                        output_padded = torch.clamp(output_padded, self.clip_values[0], self.clip_values[1])
-                    else:
-                        output_padded = torch.clamp(output_padded, -1.0, 1.0)
-
-                    # Crop back to original size
-                    self.output = self._crop_from_padded(output_padded, original_h, original_w)
-
-                    # Check for NaN or Inf
-                    if torch.isnan(self.output).any() or torch.isinf(self.output).any():
-                        logger = get_root_logger()
-                        logger.warning("Output contains NaN or Inf. Using upsampled LQ as fallback.")
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
-                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
-                        else:
-                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
-                    else:
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            self.output = self.data_unnormalize_fn(self.output)
-
-                    # Ensure output is in valid range [0, 1] after unnormalization
-                    self.output = torch.clamp(self.output, 0.0, 1.0)
-
-                    # Additional check for abnormal outputs
-                    output_mean = self.output.mean()
-                    output_std = self.output.std()
-                    if output_mean < 0.01 or output_mean > 0.99 or output_std < 0.01:
-                        logger = get_root_logger()
-                        logger.warning(f"Output appears abnormal (mean={output_mean:.4f}, std={output_std:.4f}). Using upsampled LQ.")
-                        if hasattr(self, 'data_unnormalize_fn'):
-                            lq_unnorm = self.data_unnormalize_fn(lq_upsampled)
-                            self.output = self._crop_from_padded(lq_unnorm, original_h, original_w)
-                        else:
-                            self.output = self._crop_from_padded(lq_upsampled, original_h, original_w)
-                        self.output = torch.clamp(self.output, 0.0, 1.0)
-                except Exception as e:
-                    # Fallback: use simple upsampling
-                    logger = get_root_logger()
-                    logger.warning(f"Direct forward pass failed: {e}. Using simple upsampling.")
-                    import torch.nn.functional as F
-                    lq_upsampled = F.interpolate(
-                        self.lq,
-                        size=(gt_shape[-2], gt_shape[-1]),
-                        mode='bilinear',
-                        align_corners=False
-                    )
-                    self.output = lq_upsampled
-                    if hasattr(self, 'data_unnormalize_fn'):
-                        self.output = self.data_unnormalize_fn(self.output)
-            else:
-                # Final fallback: use lq as input and predict directly
-                # Estimate GT shape from scale
-                scale = self.opt.get('scale', 4)
-                import torch.nn.functional as F
-                lq_upsampled = F.interpolate(
-                    self.lq,
-                    scale_factor=scale,
-                    mode='bilinear',
-                    align_corners=False
-                )
-                if hasattr(self, 'data_normalize_fn'):
-                    lq_upsampled = self.data_normalize_fn(lq_upsampled)
-                times = torch.ones(self.lq.shape[0], device=self.device)
-                self.output = model_to_use(lq_upsampled, times=times)
-                # Unnormalize if needed
-                if hasattr(self, 'data_unnormalize_fn'):
-                    self.output = self.data_unnormalize_fn(self.output)
-
-        if hasattr(self, 'net_g_ema') and not self.use_consistency:
-            self.net_g.train()
 
     def dist_validation(self, dataloader, current_iter, tb_logger, save_img):
         if self.opt['rank'] == 0:
