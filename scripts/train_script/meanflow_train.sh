@@ -1,0 +1,5 @@
+#python setup.py install
+python basicsr/train.py -opt ./options/train/Meanflow/train_MeanFlow_PnPUNet_SRx4.yml
+#train_comparable_srmodel_unet_B8_SRx4_P64_scratch.yml
+#train_flowmatching_unet_B8_SRx8_P32_scratch.yml
+#train_flowmatching_unet_B8_SRx4_P64_scratch.yml

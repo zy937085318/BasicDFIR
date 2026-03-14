@@ -1,6 +1,6 @@
 from basicsr.utils.registry import MODEL_REGISTRY
-from .srgan_model import SRGANModel
-from .video_base_model import VideoBaseModel
+from basicsr.models.basicsr_model_zoo.srgan_model import SRGANModel
+from basicsr.models.video_base_model import VideoBaseModel
 
 
 @MODEL_REGISTRY.register()

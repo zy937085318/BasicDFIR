@@ -2,11 +2,11 @@ import torch
 from collections import OrderedDict
 from os import path as osp
 from tqdm import tqdm
-
+import numpy as np
 from basicsr.archs import build_network
 from basicsr.losses import build_loss
 from basicsr.metrics import calculate_metric
-from basicsr.utils import get_root_logger, imwrite, tensor2img
+from basicsr.utils import get_root_logger, imwrite, tensor2img, makeborder
 from basicsr.utils.registry import MODEL_REGISTRY
 from .base_model import BaseModel
 
@@ -35,7 +35,6 @@ class SRModel(BaseModel):
     def init_training_settings(self):
         self.net_g.train()
         train_opt = self.opt['train']
-
         self.ema_decay = train_opt.get('ema_decay', 0)
         if self.ema_decay > 0:
             logger = get_root_logger()
@@ -51,7 +50,6 @@ class SRModel(BaseModel):
             else:
                 self.model_ema(0)  # copy net_g weight
             self.net_g_ema.eval()
-
         # define losses
         if train_opt.get('pixel_opt'):
             self.cri_pix = build_loss(train_opt['pixel_opt']).to(self.device)
@@ -83,6 +81,7 @@ class SRModel(BaseModel):
         optim_type = train_opt['optim_g'].pop('type')
         self.optimizer_g = self.get_optimizer(optim_type, optim_params, **train_opt['optim_g'])
         self.optimizers.append(self.optimizer_g)
+
 
     def feed_data(self, data):
         self.lq = data['lq'].to(self.device)
@@ -211,16 +210,14 @@ class SRModel(BaseModel):
                 gt_img = tensor2img([visuals['gt']])
                 metric_data['img2'] = gt_img
                 del self.gt
-
-            # tentative for out of GPU memory
-            del self.lq
-            del self.output
-            torch.cuda.empty_cache()
-
             if save_img:
                 if self.opt['is_train']:
-                    save_img_path = osp.join(self.opt['path']['visualization'], img_name,
+                    save_img_path = osp.join(self.opt['path']['visualization'], dataset_name, img_name,
                                              f'{img_name}_{current_iter}.png')
+                    lq_img = tensor2img(torch.nn.functional.interpolate(self.lq, sr_img.shape[:2], mode='bicubic'))
+                    sr_img = np.hstack((makeborder(lq_img), makeborder(sr_img), makeborder(gt_img)))
+
+
                 else:
                     if self.opt['val']['suffix']:
                         save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,
@@ -229,7 +226,10 @@ class SRModel(BaseModel):
                         save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,
                                                  f'{img_name}_{self.opt["name"]}.png')
                 imwrite(sr_img, save_img_path)
-
+            # tentative for out of GPU memory
+            del self.lq
+            del self.output
+            torch.cuda.empty_cache()
             if with_metrics:
                 # calculate metrics
                 for name, opt_ in self.opt['val']['metrics'].items():

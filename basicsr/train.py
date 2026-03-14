@@ -1,11 +1,21 @@
 import datetime
 import logging
 import math
+import sys
 import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+# Add the parent directory to sys.path
+sys.path.append(parent_dir)
+
 import time
 import torch
 from os import path as osp
-
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+# Add the parent directory to sys.path
+sys.path.append(parent_dir)
 from basicsr.data import build_dataloader, build_dataset
 from basicsr.data.data_sampler import EnlargedSampler
 from basicsr.data.prefetch_dataloader import CPUPrefetcher, CUDAPrefetcher
@@ -116,6 +126,8 @@ def train_pipeline(root_path):
     microsecond = int((time.time() % 1) * 1000000)
     result_dir_name = f"result_{model_name}_{dataset_name}_x{scale}_{timestamp}_{microsecond:06d}"
     result_dir = osp.join(opt['path']['experiments_root'], result_dir_name)
+    # print('##################')
+    # print(opt['path']['experiments_root'])
     if opt['rank'] == 0:
         # Ensure directory doesn't exist, if it does, add more random suffix
         counter = 0
@@ -257,6 +269,10 @@ def train_pipeline(root_path):
             model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
     if tb_logger:
         tb_logger.close()
+
+    path = opt['path']['experiments_root']
+    os.rename(path, path + '_finished')
+
 
 
 if __name__ == '__main__':

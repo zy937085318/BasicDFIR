@@ -1,0 +1,31 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# IDE settings
+.vscode/
+.idea/
+.trae/
+
+# Project artifacts (large files)
+logs/
+checkpoints/
+results/
+data/
+*.pt
+*.pth
+*.png
+*.jpg

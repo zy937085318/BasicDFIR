@@ -6,10 +6,12 @@ try:
 except ImportError:
     USMSharp = None
     usm_sharp = None
-from .img_util import crop_border, imfrombytes, img2tensor, imwrite, tensor2img
+from .img_util import crop_border, imfrombytes, img2tensor, imwrite, tensor2img, makeborder
 from .logger import AvgTimer, MessageLogger, get_env_info, get_root_logger, init_tb_logger, init_wandb_logger
 from .misc import check_resume, get_time_str, make_exp_dirs, mkdir_and_rename, scandir, set_random_seed, sizeof_fmt
 from .options import yaml_load
+from .image_split import split_with_overlap, merge_with_padding
+from .find_file import find_files
 
 __all__ = [
     #  color_util.py
@@ -23,6 +25,7 @@ __all__ = [
     # img_util.py
     'img2tensor',
     'tensor2img',
+    'makeborder',
     'imfrombytes',
     'imwrite',
     'crop_border',
@@ -47,5 +50,9 @@ __all__ = [
     'USMSharp',
     'usm_sharp',
     # options
-    'yaml_load'
+    'yaml_load',
+    #image_split
+    'split_with_overlap',
+    'merge_with_padding',
+    'find_files'
 ]

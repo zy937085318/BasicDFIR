@@ -5,6 +5,7 @@ import subprocess
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import datetime
 
 
 def init_dist(launcher, backend='nccl', **kwargs):
@@ -22,7 +23,7 @@ def _init_dist_pytorch(backend, **kwargs):
     rank = int(os.environ['RANK'])
     num_gpus = torch.cuda.device_count()
     torch.cuda.set_device(rank % num_gpus)
-    dist.init_process_group(backend=backend, **kwargs)
+    dist.init_process_group(backend=backend, timeout=datetime.timedelta(seconds=6000000), **kwargs)
 
 
 def _init_dist_slurm(backend, port=None):

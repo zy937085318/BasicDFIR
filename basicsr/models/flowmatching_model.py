@@ -1,231 +1,106 @@
 import torch
+from torch.nn import functional as F
 from collections import OrderedDict
-from os import path as osp
-from tqdm import tqdm
-
-from basicsr.archs import build_network
-from basicsr.losses import build_loss
-from basicsr.metrics import calculate_metric
-from basicsr.utils import get_root_logger, imwrite, tensor2img
 from basicsr.utils.registry import MODEL_REGISTRY
-from .flow_model import FlowModel
+from .sr_model import SRModel
+from flow_matching.path import AffineProbPath
+from flow_matching.solver import Solver, ODESolver
+from flow_matching.path.scheduler import CondOTScheduler
 from .utils import *
+from basicsr.utils.image_split import split_with_overlap, merge_with_padding
 
 
 @MODEL_REGISTRY.register()
-class FlowmatchingModel(FlowModel):
-    """Base SR model for single image super-resolution.
-        self.t
-        self.xt
-        self.vt_pre
-        self.vt_tar
-        """
-
+class FlowMatchingModel(SRModel):
     def __init__(self, opt):
-        super(FlowmatchingModel, self).__init__(opt)
+        super(FlowMatchingModel, self).__init__(opt)
+        self.path = AffineProbPath(scheduler=CondOTScheduler())
+        self.sample_step = opt['val']['sample_step']
+
+
+    @torch.no_grad()
+    def update_ema(self):
+        for p_ema, p_net in zip(self.net_g_ema.parameters(), self.net_g.parameters()):
+            p_ema.data.mul_(self.ema_decay).add_(p_net.data, alpha=1 - self.ema_decay)
+        for p_ema, p_net in zip(self.net_g_ema.buffers(), self.net_g.buffers()):
+            p_ema.data.copy_(p_net.data)
 
     def feed_data(self, data):
         self.lq = data['lq'].to(self.device)
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
-        self.lq = torch.nn.functional.interpolate(self.lq, size=self.gt.shape[-2:], mode='bicubic')
+            self.lq_bicubic = torch.nn.functional.interpolate(self.lq, size=self.gt.shape[-2:], mode='bicubic')
 
-    '''
-    define the interpolation processing of flow-based method. Should be rewrite for differnet flow-based method.
-    input:time step t
-    '''
-    def flow_interpolation(self):
-        self.xt = (1 - self.tt) * self.lq + self.tt * self.gt
-
-    '''
-    define the timestep sampling method.
-    '''
-    def sample_timestep(self):
-        self.t = torch.rand(self.gt.shape[0]).to(self.device)
-        self.tt = expand_tensor_like(self.t, self.gt)
-
-
-    '''
-    main processing of flow.
-    '''
-    def flow_process(self):
-        self.sample_timestep()
-        self.flow_interpolation()
-
-    '''
-    sample image with flow-based ODE.
-    '''
-    def sample_image(self, ema=False):
-        srimage = None
-        return srimage
-
-    '''
-    Add flow-based loss function.
-    '''
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
-        print(self.net_g.blocks[0].mlp.fc1.weight.mean())
-        self.flow_process()
-        self.vt_pre = self.net_g((self.xt, self.t))
         l_total = 0
-        loss_dict = OrderedDict()
-        l_flow = torch.nn.functional.l1_loss(self.vt_pre, self.gt - self.lq)
-        l_total += l_flow
-        # flow loss
-        # if self.flow_loss:
-            # l_flow = self.flow_loss(self.vt_pre, self.gt-self.lq)
-            # l_total += l_flow
-            # loss_dict['l_flow'] = l_flow
-        # # pixel loss
-        # if self.cri_pix:
-        #     l_pix = self.cri_pix(self.output, self.gt)
-        #     l_total += l_pix
-        #     loss_dict['l_pix'] = l_pix
-        # # perceptual loss
-        # if self.cri_perceptual:
-        #     l_percep, l_style = self.cri_perceptual(self.output, self.gt)
-        #     if l_percep is not None:
-        #         l_total += l_percep
-        #         loss_dict['l_percep'] = l_percep
-        #     if l_style is not None:
-        #         l_total += l_style
-        #         loss_dict['l_style'] = l_style
+        x_1 = self.gt
+        x_0 = torch.randn_like(x_1).to(self.device)
+        t = torch.rand(x_1.shape[0]).to(self.device)
+        path_sample = self.path.sample(t=t, x_0=x_0, x_1=x_1)
+        vt_pred = self.net_g(torch.cat([path_sample.x_t, self.lq_bicubic], dim=1), None, path_sample.t)
+        x_t_pred = vt_pred * t.view(-1,1,1,1) + x_0
+        x_1_pred = vt_pred * (1 - t.view(-1,1,1,1)) + x_t_pred
+        l_pixel = torch.nn.functional.l1_loss(vt_pred, path_sample.dx_t)
+        l_total += l_pixel
+        loss_dict = {'l_pixel': l_pixel}
+        # perceptual loss
+        if self.cri_perceptual:
+            l_percep, l_style = self.cri_perceptual(x_1_pred, self.gt)
+            if l_percep is not None:
+                l_total += l_percep
+                loss_dict['l_percep'] = l_percep
+            if l_style is not None:
+                l_total += l_style
+                loss_dict['l_style'] = l_style
         l_total.backward()
         self.optimizer_g.step()
         self.log_dict = self.reduce_loss_dict(loss_dict)
-        if self.ema_decay > 0:
-            self.model_ema(decay=self.ema_decay)
+        self.update_ema()
 
     '''
-    self.output is reconstructed image from sample_image method.
+    采样一张图
     '''
-    def test(self):
+    def sample(self, lq_bicubic, sample_step=5):
+        T = torch.linspace(0, 1, sample_step).to(self.device)
+        x_0 = torch.randn_like(lq_bicubic).to(self.device)
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
-            with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g_ema)
+            net_g = self.net_g_ema
         else:
-            self.net_g.eval()
+            net_g = self.net_g.eval()
+        cnf = self.cnf(net_g, lq_bicubic)
+        solver = ODESolver(velocity_model=cnf)
+        x_1_pred = solver.sample(time_grid=T, x_init=x_0, method='midpoint', step_size=sample_step,
+                                 return_intermediates=False)
+        return x_1_pred
+
+
+    def test(self):
+        with torch.no_grad():
+            img = self.lq_bicubic
+            split_h = self.opt['network_g']['img_size']
+            split_w = self.opt['network_g']['img_size']
+            split_img, padding_info = split_with_overlap(img, split_h, split_w, split_h, split_w, return_padding=True)
+            [_, n_h, n_w, _, _, _] = split_img.shape
+            for i in range(n_h):
+                for j in range(n_w):
+                    split_img [:, i, j, ...] = self.sample(split_img [:, i, j, ...], self.sample_step)
+            merged_img = merge_with_padding(split_img, padding_info)
+        self.net_g.train()
+        self.output = merged_img.clamp(0, 1)
+
+    '''
+    ODE Solver的包装器
+    '''
+    class cnf(torch.nn.Module):
+
+        def __init__(self, model, lr_bicubic):
+            super().__init__()
+            self.model = model
+            self.lr_bicubic = lr_bicubic
+
+        def forward(self, t, x):
             with torch.no_grad():
-                self.output = self.sample_image(self.lq, model=self.net_g)
-            self.net_g.train()
-
-    # def test_selfensemble(self):
-    #     # TODO: to be tested
-    #     # 8 augmentations
-    #     # modified from https://github.com/thstkdgus35/EDSR-PyTorch
-    #
-    #     def _transform(v, op):
-    #         # if self.precision != 'single': v = v.float()
-    #         v2np = v.data.cpu().numpy()
-    #         if op == 'v':
-    #             tfnp = v2np[:, :, :, ::-1].copy()
-    #         elif op == 'h':
-    #             tfnp = v2np[:, :, ::-1, :].copy()
-    #         elif op == 't':
-    #             tfnp = v2np.transpose((0, 1, 3, 2)).copy()
-    #
-    #         ret = torch.Tensor(tfnp).to(self.device)
-    #         # if self.precision == 'half': ret = ret.half()
-    #
-    #         return ret
-    #
-    #     # prepare augmented data
-    #     lq_list = [self.lq]
-    #     for tf in 'v', 'h', 't':
-    #         lq_list.extend([_transform(t, tf) for t in lq_list])
-    #
-    #     # inference
-    #     if hasattr(self, 'net_g_ema'):
-    #         self.net_g_ema.eval()
-    #         with torch.no_grad():
-    #             out_list = [self.net_g_ema(aug) for aug in lq_list]
-    #     else:
-    #         self.net_g.eval()
-    #         with torch.no_grad():
-    #             out_list = [self.net_g_ema(aug) for aug in lq_list]
-    #         self.net_g.train()
-    #
-    #     # merge results
-    #     for i in range(len(out_list)):
-    #         if i > 3:
-    #             out_list[i] = _transform(out_list[i], 't')
-    #         if i % 4 > 1:
-    #             out_list[i] = _transform(out_list[i], 'h')
-    #         if (i % 4) % 2 == 1:
-    #             out_list[i] = _transform(out_list[i], 'v')
-    #     output = torch.cat(out_list, dim=0)
-    #
-    #     self.output = output.mean(dim=0, keepdim=True)
-
-    '''
-    added code to delete flow-based attribution self.v_pred et.al.
-    '''
-    def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
-        dataset_name = dataloader.dataset.opt['name']
-        with_metrics = self.opt['val'].get('metrics') is not None
-        use_pbar = self.opt['val'].get('pbar', False)
-
-        if with_metrics:
-            if not hasattr(self, 'metric_results'):  # only execute in the first run
-                self.metric_results = {metric: 0 for metric in self.opt['val']['metrics'].keys()}
-            # initialize the best metric results for each dataset_name (supporting multiple validation datasets)
-            self._initialize_best_metric_results(dataset_name)
-        # zero self.metric_results
-        if with_metrics:
-            self.metric_results = {metric: 0 for metric in self.metric_results}
-
-        metric_data = dict()
-        if use_pbar:
-            pbar = tqdm(total=len(dataloader), unit='image')
-
-        for idx, val_data in enumerate(dataloader):
-            img_name = osp.splitext(osp.basename(val_data['lq_path'][0]))[0]
-            self.feed_data(val_data)
-            self.test()
-
-            visuals = self.get_current_visuals()
-            sr_img = tensor2img([visuals['result']])
-            metric_data['img'] = sr_img
-            if 'gt' in visuals:
-                gt_img = tensor2img([visuals['gt']])
-                metric_data['img2'] = gt_img
-                del self.gt
-
-            # tentative for out of GPU memory
-            del self.xt
-            del self.vt_pre
-            del self.lq
-            del self.output
-            torch.cuda.empty_cache()
-
-            if save_img:
-                if self.opt['is_train']:
-                    save_img_path = osp.join(self.opt['path']['visualization'], img_name,
-                                             f'{img_name}_{current_iter}.png')
-                else:
-                    if self.opt['val']['suffix']:
-                        save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,
-                                                 f'{img_name}_{self.opt["val"]["suffix"]}.png')
-                    else:
-                        save_img_path = osp.join(self.opt['path']['visualization'], dataset_name,
-                                                 f'{img_name}_{self.opt["name"]}.png')
-                imwrite(sr_img, save_img_path)
-
-            if with_metrics:
-                # calculate metrics
-                for name, opt_ in self.opt['val']['metrics'].items():
-                    self.metric_results[name] += calculate_metric(metric_data, opt_)
-            if use_pbar:
-                pbar.update(1)
-                pbar.set_description(f'Test {img_name}')
-        if use_pbar:
-            pbar.close()
-
-        if with_metrics:
-            for metric in self.metric_results.keys():
-                self.metric_results[metric] /= (idx + 1)
-                # update the best metric result
-                self._update_best_metric_result(dataset_name, metric, self.metric_results[metric], current_iter)
-
-            self._log_validation_metric_values(current_iter, dataset_name, tb_logger)
+                z = self.model(torch.cat([x, self.lr_bicubic],dim=1), None, t.repeat(x.shape[0]))
+            return z

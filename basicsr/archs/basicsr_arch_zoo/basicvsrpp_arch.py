@@ -5,8 +5,8 @@ import torchvision
 import warnings
 
 from basicsr.archs.arch_util import flow_warp
-from basicsr.archs.basicvsr_arch import ConvResidualBlocks
-from basicsr.archs.spynet_arch import SpyNet
+from basicsr.archs.basicsr_arch_zoo.basicvsr_arch import ConvResidualBlocks
+from basicsr.archs.basicsr_arch_zoo.spynet_arch import SpyNet
 from basicsr.ops.dcn import ModulatedDeformConvPack
 from basicsr.utils.registry import ARCH_REGISTRY
 

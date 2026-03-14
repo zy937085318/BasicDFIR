@@ -1,46 +1,79 @@
 # general settings
-name: train_SwinIR_SRx2_scratch_P48W8_DIV2K_500k_B4G8
+name: train_SwinIR_SRx2_scratch_DF2K_8b_500k_1GPU
 model_type: SwinIRModel
 scale: 2
-num_gpu: auto
+num_gpu: 1
 manual_seed: 0
 
 # dataset and data loader settings
 datasets:
   train:
-    name: DIV2K
+    task: SR
+    name: DF2K
     type: PairedImageDataset
-    dataroot_gt: datasets/DF2K/DIV2K_train_HR_sub
-    dataroot_lq: datasets/DF2K/DIV2K_train_LR_bicubic_X2_sub
-    meta_info_file: basicsr/data/meta_info/meta_info_DIV2K800sub_GT.txt
-    filename_tmpl: '{}'
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DF2K/train_HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DF2K/train_LR_bicubic/X2
+    filename_tmpl: '{}x2'
     io_backend:
       type: disk
 
-    gt_size: 96
+    gt_size: 128
     use_hflip: true
     use_rot: true
 
     # data loader
-    num_worker_per_gpu: 6
-    batch_size_per_gpu: 4
-    dataset_enlarge_ratio: 1
+    use_shuffle: true
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 8
+    dataset_enlarge_ratio: 100
     prefetch_mode: ~
-
-  val:
+  val_1:
     name: Set5
     type: PairedImageDataset
-    dataroot_gt: datasets/Set5/GTmod12
-    dataroot_lq: datasets/Set5/LRbicx2
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_2/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_2/LR
+    filename_tmpl: '{}'
     io_backend:
       type: disk
+  val_2:
+    name: Set14
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_2/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_2/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+#  val_3:
+#    name: Urban100
+#    type: PairedImageDataset
+#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Urban100/image_SRF_2/HR
+#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Urban100/image_SRF_2/LR
+#    filename_tmpl: '{}'
+#    io_backend:
+#      type: disk
+#  val_4:
+#    name: BSDS100
+#    type: PairedImageDataset
+#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/BSDS100/image_SRF_2/HR
+#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/BSDS100/image_SRF_2/LR
+#    filename_tmpl: '{}'
+#    io_backend:
+#      type: disk
+#  val_5:
+#    name: Manga109
+#    type: PairedImageDataset
+#    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Manga109/image_SRF_2/HR
+#    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Manga109/image_SRF_2/LR
+#    filename_tmpl: '{}'
+#    io_backend:
+#      type: disk
 
 # network structures
 network_g:
   type: SwinIR
   upscale: 2
   in_chans: 3
-  img_size: 48
+  img_size: 64
   window_size: 8
   img_range: 1.
   depths: [6, 6, 6, 6, 6, 6]
@@ -71,7 +104,7 @@ train:
     gamma: 0.5
 
   total_iter: 500000
-  warmup_iter: -1  # no warm up
+  warmup_iter: 1000  # no warm up
 
   # losses
   pixel_opt:
@@ -83,12 +116,21 @@ train:
 val:
   val_freq: !!float 5e3
   save_img: false
+  pbar: false
 
   metrics:
     psnr: # metric name, can be arbitrary
       type: calculate_psnr
       crop_border: 2
-      test_y_channel: false
+      test_y_channel: true
+    ssim:
+      type: calculate_ssim
+      crop_border: 2
+      test_y_channel: true
+    lpips:
+      type: calculate_lpips
+      model: 'alex'
+
 
 # logging settings
 logger:

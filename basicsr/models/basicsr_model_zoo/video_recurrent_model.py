@@ -8,7 +8,7 @@ from basicsr.metrics import calculate_metric
 from basicsr.utils import get_root_logger, imwrite, tensor2img
 from basicsr.utils.dist_util import get_dist_info
 from basicsr.utils.registry import MODEL_REGISTRY
-from .video_base_model import VideoBaseModel
+from basicsr.models.video_base_model import VideoBaseModel
 
 
 @MODEL_REGISTRY.register()

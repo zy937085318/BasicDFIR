@@ -35,6 +35,15 @@ def img2tensor(imgs, bgr2rgb=True, float32=True):
         return _totensor(imgs, bgr2rgb, float32)
 
 
+def makeborder(img):
+    top, bottom, left, right = 10, 10, 10, 10  # 上下左右各加2像素的黑边
+    border_type = cv2.BORDER_CONSTANT
+    border_color = [0, 0, 0]  # BGR格式，黑色
+    # 应用copyMakeBorder函数加黑边
+    bordered_image = cv2.copyMakeBorder(img, top, bottom, left, right, border_type, value=border_color)
+    return bordered_image
+
+
 def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
     """Convert torch Tensors into image numpy arrays.
 

@@ -1,0 +1,17 @@
+METHOD:
+    steps_ode: 100
+    start_time: 0.1
+    gamma: 'gamma_t'
+
+
+# CelebA:
+# denoising: start_time = 0.3, gamma = 'gamma_t'
+# box inpainting: start_time = 0.1, gamma = 'gamma_t'
+# superresolution: start_time = 0.1, gamma = 'constant'
+# random inpainting: start_time = 0.1, gamma = 'constant'
+
+# AFHQ-Cat:
+# denoising: start_time = 0.3, gamma = 'gamma_t'
+# box inpainting: start_time = 0.1, gamma = 'gamma_t'
+# super-resolution: start_time = 0.1, gamma = 'constant'
+# random inpainting: start_time = 0.1, gamma = 'constant'

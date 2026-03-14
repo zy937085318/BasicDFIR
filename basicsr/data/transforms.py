@@ -1,7 +1,7 @@
 import cv2
 import random
 import torch
-
+from torchvision import transforms
 
 def mod_crop(img, scale):
     """Mod crop images, used during testing.
@@ -61,8 +61,17 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
     lq_patch_size = gt_patch_size // scale
 
     if h_gt != h_lq * scale or w_gt != w_lq * scale:
-        raise ValueError(f'Scale mismatches. GT ({h_gt}, {w_gt}) is not {scale}x ',
-                         f'multiplication of LQ ({h_lq}, {w_lq}).')
+        padding_h = h_lq * scale - h_gt
+        padding_w = w_lq * scale - w_gt
+        for i in range(len(img_gts)):
+            print(img_gts[i].shape)
+            img_gts[i] = torch.nn.functional.pad(img_gts[i], (padding_h, 0, padding_w, 0),
+                                          mode="reflect")
+            img_lqs[i] = torch.nn.functional.interpolate(img_gts[i], (h_lq, w_lq), mode="bilinear")
+
+
+        # raise ValueError(f'Scale mismatches. GT ({h_gt}, {w_gt}) is not {scale}x ',
+        #                  f'multiplication of LQ ({h_lq}, {w_lq}).')
     if h_lq < lq_patch_size or w_lq < lq_patch_size:
         raise ValueError(f'LQ ({h_lq}, {w_lq}) is smaller than patch size '
                          f'({lq_patch_size}, {lq_patch_size}). '
@@ -89,6 +98,31 @@ def paired_random_crop(img_gts, img_lqs, gt_patch_size, scale, gt_path=None):
     if len(img_lqs) == 1:
         img_lqs = img_lqs[0]
     return img_gts, img_lqs
+
+
+def random_crop(img_gts, gt_patch_size):
+
+    if not isinstance(img_gts, list):
+        img_gts = [img_gts]
+
+    # determine input type: Numpy array or Tensor
+    input_type = 'Tensor' if torch.is_tensor(img_gts[0]) else 'Numpy'
+
+    if input_type == 'Tensor':
+        h_gt, w_gt = img_gts[0].size()[-2:]
+    else:
+        h_gt, w_gt = img_gts[0].shape[0:2]
+    # patch_size = gt_patch_size
+
+    # crop corresponding gt patch
+    top_gt, left_gt = random.randint(0, h_gt - gt_patch_size), random.randint(0, w_gt - gt_patch_size)
+    if input_type == 'Tensor':
+        img_gts = [v[:, :, top_gt:top_gt + gt_patch_size, left_gt:left_gt + gt_patch_size] for v in img_gts]
+    else:
+        img_gts = [v[top_gt:top_gt + gt_patch_size, left_gt:left_gt + gt_patch_size, ...] for v in img_gts]
+    if len(img_gts) == 1:
+        img_gts = img_gts[0]
+    return img_gts
 
 
 def augment(imgs, hflip=True, rotation=True, flows=None, return_status=False):

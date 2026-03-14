@@ -57,6 +57,7 @@ class BaseModel():
         # add a dataset record
         record = dict()
         for metric, content in self.opt['val']['metrics'].items():
+            print("content:", content)
             better = content.get('better', 'higher')
             init_val = float('-inf') if better == 'higher' else float('inf')
             record[metric] = dict(better=better, val=init_val, iter=-1)

@@ -8,7 +8,7 @@ from basicsr.losses import build_loss
 from basicsr.metrics import calculate_metric
 from basicsr.utils import imwrite, tensor2img
 from basicsr.utils.registry import MODEL_REGISTRY
-from .sr_model import SRModel
+from ..sr_model import SRModel
 
 
 @MODEL_REGISTRY.register()

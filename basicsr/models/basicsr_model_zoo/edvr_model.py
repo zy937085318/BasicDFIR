@@ -1,6 +1,6 @@
 from basicsr.utils import get_root_logger
 from basicsr.utils.registry import MODEL_REGISTRY
-from .video_base_model import VideoBaseModel
+from ..video_base_model import VideoBaseModel
 
 
 @MODEL_REGISTRY.register()

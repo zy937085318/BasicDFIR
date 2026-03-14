@@ -1,5 +1,5 @@
 """
-Rectified Flow Unet Architecture
+Rectified Flow basicsr_arch_zoo Architecture
 Based on the rectified flow implementation
 """
 from __future__ import annotations
@@ -350,7 +350,7 @@ class Attention(Module):
         return self.to_out(out)
 
 
-# Main Unet
+# Main basicsr_arch_zoo
 
 @ARCH_REGISTRY.register()
 class RectifiedFlowUnet(Module):
@@ -499,7 +499,7 @@ class RectifiedFlowUnet(Module):
         assert not (exists(cond) ^ exists(self.cond_mlp))
 
         if exists(cond):
-            assert exists(self.cond_mlp), f'`accept_cond` and `dim_cond` must be set on init for `Unet`'
+            assert exists(self.cond_mlp), f'`accept_cond` and `dim_cond` must be set on init for `basicsr_arch_zoo`'
             c = self.cond_mlp(cond)
             t = t + c
 

@@ -1,0 +1,14 @@
+cachetools
+gdown
+lpips
+matplotlib
+numpy
+pandas
+pot
+PyYAML
+pytorch-ignite
+scikit-image
+SimpleITK
+torchdiffeq
+torchvision
+tqdm

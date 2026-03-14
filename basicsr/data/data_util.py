@@ -221,7 +221,7 @@ def paired_paths_from_folder(folders, keys, filename_tmpl):
     input_paths = list(scandir(input_folder))
     gt_paths = list(scandir(gt_folder))
     assert len(input_paths) == len(gt_paths), (f'{input_key} and {gt_key} datasets have different number of images: '
-                                               f'{len(input_paths)}, {len(gt_paths)}.')
+                                               f'{len(input_paths)}, {len(gt_paths)}.{gt_paths}')
     paths = []
     for gt_path in gt_paths:
         basename, ext = osp.splitext(osp.basename(gt_path))
@@ -231,7 +231,7 @@ def paired_paths_from_folder(folders, keys, filename_tmpl):
         if input_name not in input_paths:
             # Try with x2, x4, x8 suffixes (common in DIV2K dataset)
             found = False
-            for suffix in ['x2', 'x4', 'x8']:
+            for suffix in ['x2', 'x4', 'x8','x16','x32']:
                 alt_name = f'{filename_tmpl.format(basename)}{suffix}{ext}'
                 if alt_name in input_paths:
                     input_name = alt_name

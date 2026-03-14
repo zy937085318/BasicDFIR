@@ -562,7 +562,6 @@ class RSTB(nn.Module):
         flops += self.residual_group.flops()
         h, w = self.input_resolution
         flops += h * w * self.dim * self.dim * 9
-        flops += self.patch_embed.flops()
         flops += self.patch_unembed.flops()
 
         return flops
@@ -581,6 +580,7 @@ class PatchEmbed(nn.Module):
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
+        # print(img_size)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]

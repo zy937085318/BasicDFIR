@@ -5,7 +5,7 @@ from basicsr.archs import build_network
 from basicsr.losses import build_loss
 from basicsr.utils import get_root_logger
 from basicsr.utils.registry import MODEL_REGISTRY
-from .sr_model import SRModel
+from ..sr_model import SRModel
 
 
 @MODEL_REGISTRY.register()

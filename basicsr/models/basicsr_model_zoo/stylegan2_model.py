@@ -11,7 +11,7 @@ from basicsr.losses import build_loss
 from basicsr.losses.gan_loss import g_path_regularize, r1_penalty
 from basicsr.utils import imwrite, tensor2img
 from basicsr.utils.registry import MODEL_REGISTRY
-from .base_model import BaseModel
+from basicsr.models.base_model import BaseModel
 
 
 @MODEL_REGISTRY.register()

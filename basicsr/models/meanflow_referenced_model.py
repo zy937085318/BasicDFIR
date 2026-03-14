@@ -13,11 +13,11 @@ from .flow_model import FlowModel
 
 
 @MODEL_REGISTRY.register()
-class MeanFlowModel(FlowModel):
+class MeanFlowModel_d(FlowModel):
     """Mean Flow Model for Super Resolution."""
 
     def __init__(self, opt):
-        super(MeanFlowModel, self).__init__(opt)
+        super(MeanFlowModel_d, self).__init__(opt)
 
     def init_training_settings(self):
         self.net_g.train()

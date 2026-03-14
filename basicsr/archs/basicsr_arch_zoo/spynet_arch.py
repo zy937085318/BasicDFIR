@@ -4,7 +4,7 @@ from torch import nn as nn
 from torch.nn import functional as F
 
 from basicsr.utils.registry import ARCH_REGISTRY
-from .arch_util import flow_warp
+from basicsr.archs.arch_util import flow_warp
 
 
 class BasicModule(nn.Module):

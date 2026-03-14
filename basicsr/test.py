@@ -1,7 +1,12 @@
 import logging
 import torch
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+# Add the parent directory to sys.path
+sys.path.append(parent_dir)
 from os import path as osp
-
 from basicsr.data import build_dataloader, build_dataset
 from basicsr.models import build_model
 from basicsr.utils import get_env_info, get_root_logger, get_time_str, make_exp_dirs

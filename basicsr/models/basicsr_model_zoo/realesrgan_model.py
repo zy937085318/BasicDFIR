@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
 from basicsr.data.transforms import paired_random_crop
 from basicsr.losses.loss_util import get_refined_artifact_map
-from basicsr.models.srgan_model import SRGANModel
+from basicsr.models.basicsr_model_zoo.srgan_model import SRGANModel
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY

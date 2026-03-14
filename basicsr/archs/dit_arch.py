@@ -103,7 +103,7 @@ class DiTBlock(nn.Module):
         )
         self.adaLN_modulation = nn.Sequential(nn.SiLU(), nn.Linear(dim, 6 * dim))
 
-    def forward(self, x, c):
+    def forward(self, x, c):#adaLN_modulation， modulate???
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
             self.adaLN_modulation(c).chunk(6, dim=-1)
         )

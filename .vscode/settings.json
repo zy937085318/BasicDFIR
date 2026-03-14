@@ -1,0 +1,6 @@
+{
+    "python.pythonPath": "/opt/anaconda3/bin/python",
+    "editor.fontSize": 8,
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
+}

@@ -32,7 +32,7 @@ class Registry():
         Args:
             name (str): the name of this registry
         """
-        self._name = name
+        self._name = name #arch
         self._obj_map = {}
 
     def _do_register(self, name, obj, suffix=None):

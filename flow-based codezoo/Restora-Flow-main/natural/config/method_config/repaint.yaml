@@ -1,0 +1,4 @@
+METHOD:
+    timesteps: 250
+    jump_length: 10
+    jump_n_sample: 10
