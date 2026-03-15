@@ -265,6 +265,22 @@ class FlowModel(SRModel):
         # Check if model has fixed input size (e.g., MeanFlow with DiT)
         model_input_size = self.opt['network_g'].get('input_size', None)
 
+        # For DiT-like architectures (has x_embedder), avoid outer tiling/cropping.
+        # Delegate to sample_image, which handles DiT fixed input size and padding.
+        if hasattr(self.net_g, 'x_embedder'):
+            if hasattr(self, 'net_g_ema'):
+                model_to_use = self.net_g_ema
+                model_to_use.eval()
+                with torch.no_grad():
+                    self.output = self.sample_image(self.lq, model=model_to_use)
+                model_to_use.train()
+            else:
+                self.net_g.eval()
+                with torch.no_grad():
+                    self.output = self.sample_image(self.lq, model=self.net_g)
+                self.net_g.train()
+            return
+
         if model_input_size is not None:
             # For models with fixed input size, adjust chunk size to match
             # For scale=4 and input_size=128, each LR chunk should be 32x32
