@@ -1,0 +1,142 @@
+# general settings
+name: DINOv3_ViT_Small_X4_100K
+model_type: SRModel
+scale: 4
+num_gpu: 1  # set num_gpu: 0 for cpu mode
+manual_seed: 10
+
+# dataset and data loader settings
+datasets:
+  train:
+    task: SR
+    name: DF2K
+    type: PairedImageDataset
+    dataroot_gt: /path/to/your/DF2K/train_HR
+    dataroot_lq: /path/to/your/DF2K/train_LR_bicubic/X4
+    filename_tmpl: '{}x4'
+    io_backend:
+      type: disk
+
+    gt_size: 128
+    use_hflip: true
+    use_rot: true
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 16
+    dataset_enlarge_ratio: 10
+    prefetch_mode: ~
+  val_1:
+    name: Set5
+    type: PairedImageDataset
+    dataroot_gt: /path/to/your/Set5/HR
+    dataroot_lq: /path/to/your/Set5/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+  val_2:
+    name: Set14
+    type: PairedImageDataset
+    dataroot_gt: /path/to/your/Set14/HR
+    dataroot_lq: /path/to/your/Set14/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+  val_3:
+    name: Urban100
+    type: PairedImageDataset
+    dataroot_gt: /path/to/your/Urban100/HR
+    dataroot_lq: /path/to/your/Urban100/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+# network structures
+network_g:
+  type: DinoV3
+  # DINOv3 ViT-Small config
+  img_size: 224
+  patch_size: 16
+  in_chans: 3
+  embed_dim: 384
+  depth: 12
+  num_heads: 6
+  ffn_ratio: 4.0
+  qkv_bias: true
+  drop_path_rate: 0.0
+  layerscale_init: 1.0e-5
+  norm_layer: layernormbf16
+  ffn_layer: mlp
+  ffn_bias: true
+  proj_bias: true
+  n_storage_tokens: 4
+  mask_k_bias: true
+  pos_embed_rope_base: 100.0
+  pos_embed_rope_normalize_coords: separate
+  pos_embed_rope_rescale_coords: 2
+  pos_embed_rope_dtype: fp32
+  # Super-resolution specific
+  upscale: 4
+  num_out_ch: 3
+  use_checkpoint: false
+  pretrained: true
+  pretrained_path: ~
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: false
+  resume_state: ~
+
+# training settings
+train:
+  ema_decay: 0.999
+  optim_g:
+    type: AdamW
+    lr: !!float 1e-4
+    weight_decay: 0.05
+    betas: [0.9, 0.999]
+
+  scheduler:
+    type: CosineAnnealingLR
+    T_max: 100000
+    eta_min: !!float 1e-6
+
+  total_iter: 100000
+  warmup_iter: 5000  # warm up iterations
+
+  # losses
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+
+# validation settings
+val:
+  val_freq: !!float 5000
+  save_img: true
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: false
+    ssim: # metric name, can be arbitrary
+      type: calculate_ssim
+      crop_border: 4
+      test_y_channel: false
+
+# logging settings
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 5000
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500

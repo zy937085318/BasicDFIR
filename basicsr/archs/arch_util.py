@@ -219,7 +219,12 @@ class DCNv2Pack(ModulatedDeformConvPack):
     ``Paper: Delving Deep into Deformable Alignment in Video Super-Resolution``
     """
 
-    def forward(self, x, feat):
+    def forward(self, x):
+        # Expect x to be a tuple (input, feat) for backward compatibility
+        if isinstance(x, tuple) and len(x) == 2:
+            input_x, feat = x
+        else:
+            raise ValueError("DCNv2Pack forward expects a tuple (input, feat) as input")
         out = self.conv_offset(feat)
         o1, o2, mask = torch.chunk(out, 3, dim=1)
         offset = torch.cat((o1, o2), dim=1)
@@ -231,10 +236,10 @@ class DCNv2Pack(ModulatedDeformConvPack):
             logger.warning(f'Offset abs mean is {offset_absmean}, larger than 50.')
 
         if LooseVersion(torchvision.__version__) >= LooseVersion('0.9.0'):
-            return torchvision.ops.deform_conv2d(x, offset, self.weight, self.bias, self.stride, self.padding,
+            return torchvision.ops.deform_conv2d(input_x, offset, self.weight, self.bias, self.stride, self.padding,
                                                  self.dilation, mask)
         else:
-            return modulated_deform_conv(x, offset, mask, self.weight, self.bias, self.stride, self.padding,
+            return modulated_deform_conv(input_x, offset, mask, self.weight, self.bias, self.stride, self.padding,
                                          self.dilation, self.groups, self.deformable_groups)
 
 

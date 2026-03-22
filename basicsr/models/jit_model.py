@@ -1,10 +1,11 @@
+import torch
+from flow_matching.path import AffineProbPath
+from flow_matching.path.scheduler import CondOTScheduler
+from flow_matching.solver import ODESolver
+
+from basicsr.utils.image_split import split_with_overlap, merge_with_padding
 from basicsr.utils.registry import MODEL_REGISTRY
 from .sr_model import SRModel
-from flow_matching.path import AffineProbPath
-from flow_matching.solver import Solver, ODESolver
-from flow_matching.path.scheduler import CondOTScheduler
-from .utils import *
-from basicsr.utils.image_split import split_with_overlap, merge_with_padding
 
 
 @MODEL_REGISTRY.register()
