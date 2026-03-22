@@ -5,8 +5,8 @@ results/*
 tb_logger/*
 wandb/*
 tmp/*
-claude-501/
-
+claude-501/*
+dinov3-main/*
 docs/api
 scripts/__init__.py
 

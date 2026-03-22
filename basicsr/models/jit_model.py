@@ -1,14 +1,15 @@
-import torch
-from flow_matching.path import AffineProbPath
-from flow_matching.path.scheduler import CondOTScheduler
-from flow_matching.solver import ODESolver
-
-from basicsr.utils.image_split import split_with_overlap, merge_with_padding
 from basicsr.utils.registry import MODEL_REGISTRY
 from .sr_model import SRModel
+from flow_matching.path import AffineProbPath
+from flow_matching.solver import Solver, ODESolver
+from flow_matching.path.scheduler import CondOTScheduler
+from .utils import *
+from basicsr.utils.image_split import split_with_overlap, merge_with_padding
+import torch
 
 
-@MODEL_REGISTRY.register()
+
+@MODEL_REGISTRY.register() # type: ignore
 class JiTModel(SRModel):
     def __init__(self, opt):
         super(JiTModel, self).__init__(opt)
@@ -27,7 +28,7 @@ class JiTModel(SRModel):
         self.lq = data['lq'].to(self.device)
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
-            self.lq_bicubic = torch.nn.functional.interpolate(self.lq, size=self.gt.shape[-2:], mode='bicubic')
+        self.lq_bicubic = torch.nn.functional.interpolate(self.lq, size=self.gt.shape[-2:], mode='bicubic')
 
     def optimize_parameters(self, current_iter):
         self.optimizer_g.zero_grad()
