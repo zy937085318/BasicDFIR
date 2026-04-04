@@ -270,8 +270,103 @@ def train_pipeline(root_path):
     if tb_logger:
         tb_logger.close()
 
+    # After finishing training, keep only the saved files (models, visualizations,
+    # training states) corresponding to the best validation iteration and remove
+    # other intermediate saved files to save disk space.
+    # In distributed training only the main process (rank 0) should perform pruning
     path = opt['path']['experiments_root']
-    os.rename(path, path + '_finished')
+    if opt.get('rank', 0) == 0:
+        try:
+            # Only try pruning when validation metrics exist and were run during training
+            if opt.get('val') is not None and opt['val'].get('metrics') is not None and hasattr(model,
+                                                                                                'best_metric_results'):
+                import json
+
+                # For each metric (possibly across datasets) record its best iteration.
+                # Collect all best iterations (there may be duplicates) and keep files
+                # corresponding to any of these iterations.
+                best_iters = set()
+                metric_best_map = {}  # metric -> list of (dataset, val, iter)
+                for dataset_name, record in model.best_metric_results.items():
+                    for metric, info in record.items():
+                        it = info.get('iter', -1)
+                        val = info.get('val', None)
+                        if it is None or it == -1:
+                            # skip uninitialized
+                            continue
+                        best_iters.add(int(it))
+                        metric_best_map.setdefault(metric, []).append(
+                            {'dataset': dataset_name, 'iter': int(it), 'val': val, 'better': info.get('better')})
+
+                if len(best_iters) == 0:
+                    logger.warning('No valid best iterations found in best_metric_results. Skip pruning.')
+                else:
+                    logger.info(f'Best iterations collected from metrics: {sorted(best_iters)}')
+
+                # save a small summary file with best iterations and metric info
+                best_info = dict(best_iters=sorted(best_iters), metric_best_map=metric_best_map,
+                                 all_best_metric_results=model.best_metric_results)
+                try:
+                    with open(osp.join(path, 'best_metric_results.json'), 'w') as f:
+                        json.dump(best_info, f, indent=2)
+                except Exception:
+                    logger.warning('Failed to write best metric summary file.')
+
+                # If no valid best iterations, skip pruning
+                if len(best_iters) == 0:
+                    logger.warning('No valid best iteration found. Skip pruning saved files.')
+                else:
+                    # Helper to remove files not matching keep condition
+                    def prune_files(root_dir, keep_check_fn):
+                        if not osp.exists(root_dir):
+                            return
+                        for root, dirs, files in os.walk(root_dir):
+                            for fn in files:
+                                fp = osp.join(root, fn)
+                                try:
+                                    if not keep_check_fn(fn):
+                                        os.remove(fp)
+                                except Exception as e:
+                                    logger.warning(f'Failed to remove file: {fp}, error: {e}')
+
+                    # Build a keeper check using all best_iters
+                    def keep_if_best_iters_in_name(fn):
+                        for it in best_iters:
+                            # match patterns like _{iter}. (before extension) or _{iter}.pth
+                            if f'_{it}.' in fn or fn.endswith(f'_{it}.pth') or fn == f'{it}.state':
+                                return True
+                        return False
+
+                    # Prune models: keep files that include any best_iter pattern
+                    models_dir = opt['path'].get('models')
+                    if models_dir:
+                        prune_files(models_dir, lambda fn: any(
+                            f'_{it}.' in fn or fn.endswith(f'_{it}.pth') for it in best_iters))
+
+                    # Prune training states: keep {best_iter}.state for any best_iter
+                    states_dir = opt['path'].get('training_states')
+                    if states_dir:
+                        prune_files(states_dir, lambda fn: any(fn == f'{it}.state' for it in best_iters))
+
+                    # Prune visualizations: keep files that include _{best_iter} before the extension
+                    vis_dir = opt['path'].get('visualization')
+                    if vis_dir:
+                        prune_files(vis_dir, lambda fn: any(f'_{it}.' in fn for it in best_iters))
+            else:
+                logger.info('No validation metrics or best_metric_results found; skip pruning saved files.')
+        except Exception:
+            logger.exception('Unexpected error when pruning saved files for best iteration.')
+        # Finally, rename the experiments root to indicate finishing
+        try:
+            os.rename(path, path + '_finished')
+        except Exception:
+            # If rename fails, just log a warning but don't crash
+            logger.warning(f'Failed to rename {path} to {path}_finished')
+    else:
+        logger.info('Non-master process: skip pruning saved files and rename.')
+
+    # path = opt['path']['experiments_root']
+    # os.rename(path, path + '_finished')
 
 
 
