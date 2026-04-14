@@ -11,11 +11,11 @@ from basicsr.utils.registry import MODEL_REGISTRY
 from .base_model import BaseModel
 
 @MODEL_REGISTRY.register()
-class SRUNetModel(BaseModel):
+class SRUNetSplitModel(BaseModel):
     """Base SR model for single image super-resolution."""
 
     def __init__(self, opt):
-        super(SRUNetModel, self).__init__(opt)
+        super(SRUNetSplitModel, self).__init__(opt)
 
         # define network
         self.net_g = build_network(opt['network_g'])
@@ -118,15 +118,30 @@ class SRUNetModel(BaseModel):
             self.model_ema(decay=self.ema_decay)
 
     def test(self):
+        with torch.no_grad():
+            img = self.lq
+            split_h = self.opt['network_g']['img_size']
+            split_w = self.opt['network_g']['img_size']
+            split_img, padding_info = split_with_overlap(img, split_h, split_w, split_h, split_w, return_padding=True)
+            [_, n_h, n_w, _, _, _] = split_img.shape
+            for i in range(n_h):
+                for j in range(n_w):
+                    split_img [:, i, j, ...] = self.sample(split_img [:, i, j, ...])
+            merged_img = merge_with_padding(split_img, padding_info)
+        self.net_g.train()
+        self.output = merged_img.clamp(0, 1)
+
+    def sample(self, img):
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             with torch.no_grad():
-                self.output = self.net_g_ema(self.lq).clamp(0, 1)
+                self.output = self.net_g_ema(img)
         else:
             self.net_g.eval()
             with torch.no_grad():
-                self.output = self.net_g(self.lq).clamp(0, 1)
+                self.output = self.net_g(img)
             self.net_g.train()
+        return self.output
 
     def test_selfensemble(self):
         # TODO: to be tested

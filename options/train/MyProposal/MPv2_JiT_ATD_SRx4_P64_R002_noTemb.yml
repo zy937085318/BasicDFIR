@@ -1,15 +1,16 @@
-
-# general settings
-name: lightADTUNetModel_SRx4_scratch
-model_type: SRUNetModel
+# R002: Ablation — remove all timestep conditioning
+# Same as full TC-ATD but temb_ch=0 (no AdaLN, no t-gate, no timestep embedding)
+name: MPv2_JiT_ATD_SRx4_P64_R002_noTemb
+model_type: JiTModel
 scale: 4
 num_gpu: 1
 manual_seed: 0
-# find_unused_parameters: True
+description: 'R002: Ablation — no timestep conditioning (temb_ch=0)'
 
 # dataset and data loader settings
 datasets:
   train:
+    task: SR
     name: DF2K
     type: PairedImageDataset
     dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DF2K/train_HR
@@ -23,8 +24,9 @@ datasets:
     use_rot: true
 
     # data loader
-    num_worker_per_gpu: 8
-    batch_size_per_gpu: 8
+    use_shuffle: true
+    num_worker_per_gpu: 6
+    batch_size_per_gpu: 4
     dataset_enlarge_ratio: 1
     prefetch_mode: cuda
     pin_memory: True
@@ -35,6 +37,7 @@ datasets:
     type: PairedImageDataset
     dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/HR
     dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/LR
+    filename_tmpl: '{}'
     io_backend:
       type: disk
 
@@ -43,33 +46,50 @@ datasets:
     type: PairedImageDataset
     dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/HR
     dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+  val_3:
+    name: Urban100
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Urban100/image_SRF_4/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Urban100/image_SRF_4/LR
+    filename_tmpl: '{}'
     io_backend:
       type: disk
 
 # network structures
 network_g:
-  type: ATDUNet
+  type: MPv2_arch
   upscale: 1
   in_chans: 3
-  embed_dim: 48
-  depths: [ 1, 1, 6, 6 ]
-  num_heads: [ 1, 1, 4, 4 ]
-  window_size: [ 8, 8, 8, 8 ]
-  dim_ffn_td: [ 6, 12, 12, 12 ]
-  category_size: [ 128, 128, 128, 128 ]
-  num_tokens: [ 128, 128, 128, 128 ]
-  reducted_dim: [ 6, 12, 24, 24 ]
+  out_chans: 3
+  img_size: 256
+  embed_dim: 90
+  depths: [6, 6, 6, 6]
+  num_heads: [6, 6, 6, 6]
+  window_size: 8
+  dim_ffn_td: 16
+  category_size: 128
+  num_tokens: 64
+  reducted_dim: 4
   convffn_kernel_size: 5
-  bias: false
   img_range: 1.
-  mlp_ratio: 2.66
+  mlp_ratio: 2
+  upsampler: ''
+  resi_connection: '1conv'
   use_checkpoint: false
+  # ABLATION: no timestep conditioning
+  temb_ch: 0             # <-- KEY CHANGE: disable all timestep conditioning
+  embedding_dim: 256
+  downscale: 4
 
 # path
 path:
-  pretrain_network_g: ~ #experiments/000_ATD_SRx2_scratch/models/net_g_latest.pth
-  strict_load_g: false
-  resume_state: /8T2/Project/BasicDFIR/experiments/lightADTUNetModel_SRx4_scratch_20260414_131917_570201/training_states/5000.state
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
 
 # training settings
 train:
@@ -77,13 +97,13 @@ train:
   ema_decay: 0.999
   optim_g:
     type: AdamW
-    lr: !!float 1e-4
+    lr: !!float 2e-4
     weight_decay: 0
     betas: [0.9, 0.9]
 
   scheduler:
     type: MultiStepLR
-    milestones: [ 250000, 400000, 450000, 475000 ]
+    milestones: [250000, 400000, 450000, 475000]
     gamma: 0.5
 
   total_iter: 500000
@@ -98,23 +118,19 @@ train:
 # validation settings
 val:
   val_freq: !!float 5e3
-  save_img: false
+  save_img: true
+  pbar: true
+  sample_step: 5
 
   metrics:
-    psnr: # metric name, can be arbitrary
+    psnr:
       type: calculate_psnr
       crop_border: 4
-      test_y_channel: yes
-    
-    ssim: # metric name, can be arbitrary
+      test_y_channel: true
+    ssim:
       type: calculate_ssim
       crop_border: 4
-      test_y_channel: yes
-    lpips:
-      type: calculate_lpips
-      model: 'alex'
-      better: lower
-
+      test_y_channel: true
 
 # logging settings
 logger:

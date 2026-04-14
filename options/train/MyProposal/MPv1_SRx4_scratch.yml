@@ -1,11 +1,11 @@
 
 # general settings
-name: MP_SRx4_B8P64_scratch
+name: MPv1_1_SRx4_B8P64_scratch
 model_type: MPv1Model
 scale: 4
 num_gpu: 1
 manual_seed: 0
-description: 'MPv1Model'
+description: 'MPv1_1Model, add SE block at first_conv'
 # find_unused_parameters: True
 
 # dataset and data loader settings
@@ -73,7 +73,7 @@ datasets:
 
 # network structures
 network_g:
-  type: MPv1_arch
+  type: MPv1_1_arch
   upscale: 4
   in_chans: 3
   img_size: 256

@@ -9,9 +9,14 @@ claude-501/*
 dinov3-main/*
 docs/api
 scripts/__init__.py
-.vscode
+.vscode/*
 *.DS_Store
-.idea
+.idea/*
+.cursor/*
+.claude/*
+.agent/*
+.gemini/*
+.minimax/*
 
 # ignored files
 version.py

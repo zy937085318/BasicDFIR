@@ -1,9 +1,14 @@
 {
     "python.pythonPath": "/opt/anaconda3/bin/python",
-    "editor.fontSize": 8,
+    "editor.fontSize": 15,
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python.analysis.autoImportCompletions": true,
     "python.analysis.typeCheckingMode": "off",
-    "remote.SSH.defaultForwardedPorts": []
+    "remote.SSH.defaultForwardedPorts": [],
+    "editor.formatOnSave": true,
+    "files.autoSave": "onFocusChange",
+    "chat.useClaudeSkills": true,
+    "claudeCode.disableLoginPrompt": true,
+    "claudeCode.enableNewConversationShortcut": true
 }

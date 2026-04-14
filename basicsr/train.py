@@ -244,7 +244,7 @@ def train_pipeline(root_path):
 
             # validation
             if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
-                logger.info(opt['description'])
+                logger.info(opt.get('description', ''))
                 if len(val_loaders) > 1:
                     # Check if model supports multiple validation datasets
                     # SRModel and its subclasses (like FlowModel) support multiple validation datasets

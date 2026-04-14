@@ -43,7 +43,7 @@ class FlowMatchingModel(SRModel):
         x_1_pred = vt_pred * (1 - t.view(-1,1,1,1)) + x_t_pred
         l_pixel = torch.nn.functional.l1_loss(vt_pred, path_sample.dx_t)
         l_total += l_pixel
-        loss_dict = {'l_pixel': l_pixel}
+        loss_dict = {'l_pix': l_pixel}
         # perceptual loss
         if self.cri_perceptual:
             l_percep, l_style = self.cri_perceptual(x_1_pred, self.gt)
