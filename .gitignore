@@ -9,7 +9,7 @@ claude-501/*
 dinov3-main/*
 docs/api
 scripts/__init__.py
-
+.vscode
 *.DS_Store
 .idea
 
@@ -24,6 +24,7 @@ version.py
 *.gif
 *.pth
 *.zip
+.gitignore
 
 # template
 

@@ -1,3 +1,5 @@
+from asyncio.constants import SSL_SHUTDOWN_TIMEOUT
+
 from basicsr.utils.registry import MODEL_REGISTRY
 from .sr_model import SRModel
 from flow_matching.path import AffineProbPath
@@ -6,7 +8,6 @@ from flow_matching.path.scheduler import CondOTScheduler
 from .utils import *
 from basicsr.utils.image_split import split_with_overlap, merge_with_padding
 import torch
-
 
 
 @MODEL_REGISTRY.register() # type: ignore

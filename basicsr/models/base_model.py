@@ -64,12 +64,15 @@ class BaseModel():
         self.best_metric_results[dataset_name] = record
 
     def _update_best_metric_result(self, dataset_name, metric, val, current_iter):
+        # Use strict comparison so that when a metric equals the current best
+        # we keep the earlier iteration. This prevents later validations with
+        # identical metric values from overwriting the original best iteration.
         if self.best_metric_results[dataset_name][metric]['better'] == 'higher':
-            if val >= self.best_metric_results[dataset_name][metric]['val']:
+            if val > self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
         else:
-            if val <= self.best_metric_results[dataset_name][metric]['val']:
+            if val < self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
 

@@ -514,3 +514,26 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+class pixel_downsample(nn.Module):
+    def __init__(self, scale):
+        super().__init__()
+        self.scale = scale
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        assert h % self.scale == 0 and w % self.scale == 0
+        x = x.view(b, c, h // self.scale, self.scale, w // self.scale, self.scale)
+        x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
+        return x.view(b, c * (self.scale ** 2), h // self.scale, w // self.scale)
+
+
+if __name__ == '__main__':
+    # test pixel_downsample
+    x = torch.range(0,299)
+    x = x.view(1,3,10,10)
+    downsample = nn.PixelUnshuffle(downscale_factor=2)
+    out = downsample(x)
+    print(out.shape)
+    upsample = nn.PixelShuffle(2)
+    print(upsample(out).shape)

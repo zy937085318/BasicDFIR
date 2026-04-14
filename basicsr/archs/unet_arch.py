@@ -28,9 +28,9 @@ class Swish(nn.Module):
         return torch.sigmoid(x) * x
 
 
-def group_norm(out_ch):
+def group_norm(out_ch, num_groups=32):
     return nn.GroupNorm(
-        num_groups=32,
+        num_groups=num_groups,
         num_channels=out_ch,
         eps=1e-6,
         affine=True)

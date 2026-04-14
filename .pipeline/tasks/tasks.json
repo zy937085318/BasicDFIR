@@ -1,0 +1,139 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Collect and triage core literature on flow-based SR",
+        "description": "Gather key references on flow matching, rectified flow, and UNet architectures for super-resolution; cluster them by theme and document inclusion boundaries.",
+        "status": "completed",
+        "stage": "survey",
+        "priority": "high",
+        "dependencies": [],
+        "taskType": "exploration",
+        "inputsNeeded": [
+          "sections.survey.literature_scope"
+        ],
+        "suggestedSkills": [
+          "inno-deep-research"
+        ],
+        "sourceBlueprintId": "survey_collect_references",
+        "completionNotes": "Collected key references including OFTSR (arXiv:2412.09465), FlowIE (CVPR 2024), and Rectified Flow (ICLR 2023). Saved literature survey to Survey/reports/flow_based_sr_survey.md.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      },
+      {
+        "id": 2,
+        "title": "Summarize trends, baselines, and open gaps in flow-based SR",
+        "description": "Synthesize the literature into trends, tensions, and high-value research gaps for flow-based image super-resolution.",
+        "status": "completed",
+        "stage": "survey",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "taskType": "analysis",
+        "inputsNeeded": [
+          "sections.survey.literature_scope",
+          "sections.survey.key_references"
+        ],
+        "suggestedSkills": [
+          "inno-deep-research"
+        ],
+        "sourceBlueprintId": "survey_summarize_gaps",
+        "completionNotes": "Synthesized literature into key findings, identified 4 major open gaps, and updated research_brief.json with survey results.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      },
+      {
+        "id": 3,
+        "title": "Explore novel directions for flow-based SR",
+        "description": "Brainstorm novel architectures, flow designs, or training strategies for improving flow-based super-resolution.",
+        "status": "pending",
+        "stage": "ideation",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "taskType": "exploration",
+        "inputsNeeded": [
+          "sections.survey.synthesis_summary",
+          "sections.survey.open_gaps"
+        ],
+        "suggestedSkills": [
+          "inno-idea-generation"
+        ],
+        "sourceBlueprintId": "ideation_explore_directions",
+        "nextActionPrompt": "Task: Explore novel directions for flow-based SR\nStage: ideation\nUser inputs: sections.survey.synthesis_summary, sections.survey.open_gaps\nSuggested skills: inno-idea-generation\nQuality gate: Research goal is specific and measurable; Problem framing clearly identifies limitations of existing work\nStage guidance: Use the open gaps from survey to generate novel research ideas\nPlease produce a concrete next-step plan and execution output. If user inputs are provided, polish and make them concrete, then write updates back to .pipeline/docs/research_brief.json.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      },
+      {
+        "id": 4,
+        "title": "Select research direction with explicit rationale",
+        "description": "Compare candidate directions on novelty, feasibility, and impact; pick one and record trade-offs.",
+        "status": "pending",
+        "stage": "ideation",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "taskType": "analysis",
+        "inputsNeeded": [],
+        "suggestedSkills": [
+          "inno-idea-eval"
+        ],
+        "sourceBlueprintId": "ideation_select_direction",
+        "nextActionPrompt": "Task: Select research direction with explicit rationale\nStage: ideation\nUser inputs: (none yet)\nSuggested skills: inno-idea-eval\nQuality gate: Research goal is specific and measurable; Problem framing clearly identifies limitations of existing work\nStage guidance: Evaluate the candidate ideas and select the most promising one\nPlease produce a concrete next-step plan and execution output. If user inputs are provided, polish and make them concrete, then write updates back to .pipeline/docs/research_brief.json.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      },
+      {
+        "id": 5,
+        "title": "Define experimental protocol and implement baseline models",
+        "description": "Finalize experimental setup, implement baseline flow-based SR methods, and prepare training/testing pipelines.",
+        "status": "pending",
+        "stage": "experiment",
+        "priority": "high",
+        "dependencies": [
+          4
+        ],
+        "taskType": "implementation",
+        "inputsNeeded": [
+          "sections.ideation.research_goal",
+          "sections.ideation.success_criteria"
+        ],
+        "suggestedSkills": [
+          "inno-experiment-dev",
+          "inno-code-survey"
+        ],
+        "sourceBlueprintId": "experiment_define_protocol",
+        "nextActionPrompt": "Task: Define experimental protocol and implement baseline models\nStage: experiment\nUser inputs: sections.ideation.research_goal, sections.ideation.success_criteria\nSuggested skills: inno-experiment-dev, inno-code-survey\nQuality gate: Evaluation protocol uses standard SR metrics and datasets; Methodology is reproducible and clearly documented\nStage guidance: Set up the experimental framework and implement baseline models\nPlease produce a concrete next-step plan and execution output. If user inputs are provided, polish and make them concrete, then write updates back to .pipeline/docs/research_brief.json.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      },
+      {
+        "id": 6,
+        "title": "Run experiments and analyze results",
+        "description": "Train models, run evaluations, and analyze results against baselines and success criteria.",
+        "status": "pending",
+        "stage": "experiment",
+        "priority": "high",
+        "dependencies": [
+          5
+        ],
+        "taskType": "analysis",
+        "inputsNeeded": [
+          "sections.experiment.hypothesis_or_validation_goal",
+          "sections.experiment.evaluation_plan"
+        ],
+        "suggestedSkills": [
+          "inno-experiment-analysis"
+        ],
+        "sourceBlueprintId": "experiment_run_analysis",
+        "nextActionPrompt": "Task: Run experiments and analyze results\nStage: experiment\nUser inputs: sections.experiment.hypothesis_or_validation_goal, sections.experiment.evaluation_plan\nSuggested skills: inno-experiment-analysis\nQuality gate: Evaluation protocol uses standard SR metrics and datasets; Methodology is reproducible and clearly documented\nStage guidance: Execute experiments and analyze the results\nPlease produce a concrete next-step plan and execution output. If user inputs are provided, polish and make them concrete, then write updates back to .pipeline/docs/research_brief.json.",
+        "createdAt": "2026-04-10T14:06:42.752Z",
+        "updatedAt": "2026-04-10T14:06:42.752Z"
+      }
+    ]
+  }
+}

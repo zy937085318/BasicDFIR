@@ -1,0 +1,30 @@
+{
+  "instance_id": "BasicDFIR_2026-04-10T14-06-42-752Z",
+  "idea_maturity": "",
+  "created_at": "2026-04-10T14:06:42.752Z",
+  "instance": "/Users/ybb/code zoo/BasicDFIR/instance.json",
+  "category": "",
+  "Survey": {
+    "references": "/Users/ybb/code zoo/BasicDFIR/Survey/references",
+    "reports": "/Users/ybb/code zoo/BasicDFIR/Survey/reports"
+  },
+  "Ideation": {
+    "ideas": "/Users/ybb/code zoo/BasicDFIR/Ideation/ideas",
+    "references": "/Users/ybb/code zoo/BasicDFIR/Ideation/references"
+  },
+  "Experiment": {
+    "code_references": "/Users/ybb/code zoo/BasicDFIR/Experiment/code_references",
+    "datasets": "/Users/ybb/code zoo/BasicDFIR/Experiment/datasets",
+    "core_code": "/Users/ybb/code zoo/BasicDFIR/Experiment/core_code",
+    "analysis": "/Users/ybb/code zoo/BasicDFIR/Experiment/analysis"
+  },
+  "Publication": {
+    "paper": "/Users/ybb/code zoo/BasicDFIR/Publication/paper"
+  },
+  "Promotion": {
+    "homepage": "/Users/ybb/code zoo/BasicDFIR/Promotion/homepage",
+    "slides": "/Users/ybb/code zoo/BasicDFIR/Promotion/slides",
+    "audio": "/Users/ybb/code zoo/BasicDFIR/Promotion/audio",
+    "video": "/Users/ybb/code zoo/BasicDFIR/Promotion/video"
+  }
+}

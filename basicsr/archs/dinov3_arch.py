@@ -155,7 +155,7 @@ def convnext_tiny(upscale=4, **kwargs):
         depths=[3, 3, 9, 3],
         dims=[96, 192, 384, 768],
         upscale=upscale,
-        pretrained='/8T2/Project/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth',
+        pretrained='/8T2/pretrained_models/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth',
         **kwargs,
     )
     return model
@@ -167,7 +167,7 @@ def convnext_small(upscale=4, **kwargs):
         depths=[3, 3, 27, 3],
         dims=[96, 192, 384, 768],
         upscale=upscale,
-        pretrained='/8T2/Project/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_small_pretrain_lvd1689m-296db49d.pth',
+        pretrained='/8T2/pretrained_models/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_small_pretrain_lvd1689m-296db49d.pth',
         **kwargs,
     )
     return model
@@ -179,7 +179,7 @@ def convnext_base(upscale=4, **kwargs):
         depths=[3, 3, 27, 3],
         dims=[128, 256, 512, 1024],
         upscale=upscale,
-        pretrained = '/8T2/Project/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_base_pretrain_lvd1689m-801f2ba9.pth',
+        pretrained = '/8T2/pretrained_models/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_base_pretrain_lvd1689m-801f2ba9.pth',
         **kwargs,
     )
     return model
@@ -191,7 +191,7 @@ def convnext_large(upscale=4, **kwargs):
         depths=[3, 3, 27, 3],
         dims=[192, 384, 768, 1536],
         upscale=upscale,
-        pretrained = '/8T2/Project/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth',
+        pretrained = '/8T2/pretrained_models/DINOV3_pretrained_weight/ConvNeXt/dinov3_convnext_large_pretrain_lvd1689m-61fa432d.pth',
         **kwargs,
     )
     return model

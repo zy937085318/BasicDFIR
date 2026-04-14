@@ -7,9 +7,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
 # Add the parent directory to sys.path
 sys.path.append(parent_dir)
-
 import time
 import torch
+torch.set_num_threads(2)
 from os import path as osp
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +25,7 @@ from basicsr.utils import (AvgTimer, MessageLogger, check_resume, get_env_info, 
 from basicsr.utils.options import copy_opt_file, dict2str, parse_options
 
 
-def init_tb_loggers(opt):
+def init_tb_loggers(opt, result_dir):
     # initialize wandb logger before tensorboard logger to allow proper sync
     if (opt['logger'].get('wandb') is not None) and (opt['logger']['wandb'].get('project')
                                                      is not None) and ('debug' not in opt['name']):
@@ -33,7 +33,8 @@ def init_tb_loggers(opt):
         init_wandb_logger(opt)
     tb_logger = None
     if opt['logger'].get('use_tb_logger') and 'debug' not in opt['name']:
-        tb_logger = init_tb_logger(log_dir=osp.join(opt['root_path'], 'tb_logger', opt['name']))
+        # tb_logger = init_tb_logger(log_dir=osp.join(opt['root_path'], 'tb_logger', opt['name']))
+        tb_logger = init_tb_logger(log_dir=result_dir)  # Save TensorBoard logs in the same result directory for better organization
     return tb_logger
 
 
@@ -103,7 +104,6 @@ def train_pipeline(root_path):
     # parse options, set distributed setting, set random seed
     opt, args = parse_options(root_path, is_train=True)
     opt['root_path'] = root_path
-
     torch.backends.cudnn.benchmark = True
     # torch.backends.cudnn.deterministic = True
 
@@ -149,7 +149,7 @@ def train_pipeline(root_path):
     if opt['rank'] == 0:
         logger.info(f'Training result images will be saved to: {result_dir}')
     # initialize wandb and tb loggers
-    tb_logger = init_tb_loggers(opt)
+    tb_logger = init_tb_loggers(opt, result_dir)
 
     # create train and validation dataloaders
     result = create_train_val_dataloader(opt, logger)
@@ -244,6 +244,7 @@ def train_pipeline(root_path):
 
             # validation
             if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
+                logger.info(opt['description'])
                 if len(val_loaders) > 1:
                     # Check if model supports multiple validation datasets
                     # SRModel and its subclasses (like FlowModel) support multiple validation datasets

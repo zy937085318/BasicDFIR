@@ -1,0 +1,274 @@
+{
+      "schemaVersion": "1.1",
+      "templateId": "agent-generated",
+      "meta": {
+            "title": "BasicDFIR: Flow-Based Image Super-Resolution",
+            "lead_author": "",
+            "target_venue": "CVPR/ICCV/ECCV",
+            "date": "2026-04-10"
+      },
+      "sections": {
+            "survey": {
+                  "literature_scope": "Flow-based image super-resolution (including flow matching, rectified flow, mean flow), UNet architectures for restoration, and standard SR baselines",
+                  "key_references": [
+                        "OFTSR: One-Step Flow for Image Super-Resolution with Tunable Fidelity-Realism Trade-offs (arXiv:2412.09465)",
+                        "FlowIE: Efficient Image Enhancement via Rectified Flow (CVPR 2024)",
+                        "Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow (ICLR 2023)"
+                  ],
+                  "synthesis_summary": "基于流的方法在图像超分辨率领域取得显著进展。整流流（Rectified Flow）通过直线路径连接数据和噪声分布，大幅提升了推理效率。OFTSR 等工作实现了单步超分辨率，并提供了保真度和真实感的灵活权衡。UNet 及其变体仍是主流架构，通过结合注意力机制和残差块不断提升性能。",
+                  "open_gaps": [
+                        "探索更高效的 UNet 变体或新架构（如 Mamba）",
+                        "开发更有效的蒸馏方法缩小单步与多步模型的性能差距",
+                        "研究如何更好地处理真实世界的复杂退化",
+                        "深入理解 ABC 流等新颖流场设计的潜力"
+                  ]
+            },
+            "ideation": {
+                  "research_goal": "Improve flow-based super-resolution performance by exploring novel architectures and methods",
+                  "problem_framing": "Existing flow-based SR methods may have suboptimal architectures or flow designs that limit their performance on standard benchmarks",
+                  "evidence_plan": "Evaluate on standard SR datasets (DIV2K, Set5, Set14, BSD100, Urban100) using PSNR, SSIM, LPIPS, and FID metrics",
+                  "success_criteria": [
+                        "Achieve better or competitive performance compared to state-of-the-art flow-based SR methods",
+                        "Validate improvements across multiple datasets and metrics"
+                  ]
+            },
+            "experiment": {
+                  "hypothesis_or_validation_goal": "Novel architectures (like ABCUNet) and flow designs will improve flow-based SR performance",
+                  "dataset_or_data_source": "DIV2K (training), Set5, Set14, BSD100, Urban100 (testing)",
+                  "method_or_protocol": "Implement and train flow-based SR models using BasicSR framework, evaluate on standard benchmarks",
+                  "evaluation_plan": "Compute PSNR, SSIM, LPIPS, and FID for all methods and compare against baselines"
+            },
+            "publication": {
+                  "paper_outline": "",
+                  "figures_tables_plan": "",
+                  "artifact_plan": "",
+                  "submission_checklist": []
+            },
+            "promotion": {
+                  "slide_outline": "",
+                  "deck_style": "",
+                  "tts_config": "",
+                  "video_assembly_plan": "",
+                  "homepage_plan": ""
+            }
+      },
+      "pipeline": {
+            "version": "1.1",
+            "mode": "idea",
+            "startStage": "survey",
+            "stages": {
+                  "survey": {
+                        "required_elements": [
+                              "sections.survey.literature_scope",
+                              "sections.survey.synthesis_summary"
+                        ],
+                        "optional_elements": [
+                              "sections.survey.key_references",
+                              "sections.survey.open_gaps"
+                        ],
+                        "quality_gate": [
+                              "Literature scope and search boundary are explicit",
+                              "Synthesis identifies concrete open gaps in flow-based SR"
+                        ],
+                        "task_blueprints": [
+                              {
+                                    "id": "survey_collect_references",
+                                    "title": "Collect and triage core literature on flow-based SR",
+                                    "description": "Gather key references on flow matching, rectified flow, and UNet architectures for super-resolution; cluster them by theme and document inclusion boundaries.",
+                                    "taskType": "exploration",
+                                    "recommended_skills": [
+                                          "inno-deep-research"
+                                    ]
+                              },
+                              {
+                                    "id": "survey_summarize_gaps",
+                                    "title": "Summarize trends, baselines, and open gaps in flow-based SR",
+                                    "description": "Synthesize the literature into trends, tensions, and high-value research gaps for flow-based image super-resolution.",
+                                    "taskType": "analysis",
+                                    "recommended_skills": [
+                                          "inno-deep-research"
+                                    ]
+                              }
+                        ],
+                        "recommended_skills": [
+                              "inno-deep-research",
+                              "dataset-discovery"
+                        ]
+                  },
+                  "ideation": {
+                        "required_elements": [
+                              "sections.ideation.research_goal",
+                              "sections.ideation.problem_framing"
+                        ],
+                        "optional_elements": [
+                              "sections.ideation.evidence_plan",
+                              "sections.ideation.success_criteria"
+                        ],
+                        "quality_gate": [
+                              "Research goal is specific and measurable",
+                              "Problem framing clearly identifies limitations of existing work"
+                        ],
+                        "task_blueprints": [
+                              {
+                                    "id": "ideation_explore_directions",
+                                    "title": "Explore novel directions for flow-based SR",
+                                    "description": "Brainstorm novel architectures, flow designs, or training strategies for improving flow-based super-resolution.",
+                                    "taskType": "exploration",
+                                    "recommended_skills": [
+                                          "inno-idea-generation"
+                                    ]
+                              },
+                              {
+                                    "id": "ideation_select_direction",
+                                    "title": "Select research direction with explicit rationale",
+                                    "description": "Compare candidate directions on novelty, feasibility, and impact; pick one and record trade-offs.",
+                                    "taskType": "analysis",
+                                    "recommended_skills": [
+                                          "inno-idea-eval"
+                                    ]
+                              }
+                        ],
+                        "recommended_skills": [
+                              "inno-idea-generation",
+                              "inno-prepare-resources"
+                        ]
+                  },
+                  "experiment": {
+                        "required_elements": [
+                              "sections.experiment.hypothesis_or_validation_goal",
+                              "sections.experiment.method_or_protocol",
+                              "sections.experiment.evaluation_plan"
+                        ],
+                        "optional_elements": [
+                              "sections.experiment.dataset_or_data_source"
+                        ],
+                        "quality_gate": [
+                              "Evaluation protocol uses standard SR metrics and datasets",
+                              "Methodology is reproducible and clearly documented"
+                        ],
+                        "task_blueprints": [
+                              {
+                                    "id": "experiment_define_protocol",
+                                    "title": "Define experimental protocol and implement baseline models",
+                                    "description": "Finalize experimental setup, implement baseline flow-based SR methods, and prepare training/testing pipelines.",
+                                    "taskType": "implementation",
+                                    "recommended_skills": [
+                                          "inno-experiment-dev",
+                                          "inno-code-survey"
+                                    ]
+                              },
+                              {
+                                    "id": "experiment_run_analysis",
+                                    "title": "Run experiments and analyze results",
+                                    "description": "Train models, run evaluations, and analyze results against baselines and success criteria.",
+                                    "taskType": "analysis",
+                                    "recommended_skills": [
+                                          "inno-experiment-analysis"
+                                    ]
+                              }
+                        ],
+                        "recommended_skills": [
+                              "inno-code-survey",
+                              "inno-experiment-dev",
+                              "inno-experiment-analysis"
+                        ]
+                  },
+                  "publication": {
+                        "required_elements": [
+                              "sections.publication.paper_outline",
+                              "sections.publication.submission_checklist"
+                        ],
+                        "optional_elements": [
+                              "sections.publication.figures_tables_plan",
+                              "sections.publication.artifact_plan"
+                        ],
+                        "quality_gate": [
+                              "Contribution narrative and structure are coherent",
+                              "Submission checklist and artifacts are complete"
+                        ],
+                        "task_blueprints": [
+                              {
+                                    "id": "publication_outline_to_draft",
+                                    "title": "Expand outline into draft sections",
+                                    "description": "Convert outline into structured draft sections with claim-evidence alignment.",
+                                    "taskType": "writing",
+                                    "recommended_skills": [
+                                          "inno-paper-writing"
+                                    ]
+                              },
+                              {
+                                    "id": "publication_finalize_artifacts",
+                                    "title": "Finalize figures, tables, and artifacts",
+                                    "description": "Prepare visuals and reproducibility artifacts required for submission.",
+                                    "taskType": "writing",
+                                    "recommended_skills": [
+                                          "inno-paper-writing",
+                                          "inno-figure-gen"
+                                    ]
+                              }
+                        ],
+                        "recommended_skills": [
+                              "inno-paper-writing",
+                              "inno-reference-audit",
+                              "inno-rclone-to-overleaf"
+                        ]
+                  },
+                  "promotion": {
+                        "required_elements": [
+                              "sections.promotion.slide_outline"
+                        ],
+                        "optional_elements": [
+                              "sections.promotion.deck_style",
+                              "sections.promotion.tts_config",
+                              "sections.promotion.video_assembly_plan",
+                              "sections.promotion.homepage_plan"
+                        ],
+                        "quality_gate": [
+                              "Slide outline and homepage plan cover key paper contributions",
+                              "Deck style is defined for visual consistency"
+                        ],
+                        "task_blueprints": [
+                              {
+                                    "id": "promotion_draft_outline",
+                                    "title": "Draft slide outline and narration scripts",
+                                    "description": "Create per-slide content plan with talking points based on paper contributions.",
+                                    "taskType": "scripting",
+                                    "recommended_skills": [
+                                          "making-academic-presentations"
+                                    ]
+                              },
+                              {
+                                    "id": "promotion_prepare_homepage",
+                                    "title": "Prepare research homepage content and assets",
+                                    "description": "Organize homepage sections, key visuals, and links for project promotion.",
+                                    "taskType": "delivery",
+                                    "recommended_skills": [
+                                          "making-academic-presentations"
+                                    ]
+                              },
+                              {
+                                    "id": "promotion_generate_slides",
+                                    "title": "Generate slide images from outline and paper figures",
+                                    "description": "Render slide visuals while preserving paper-figure quality where possible.",
+                                    "taskType": "rendering",
+                                    "recommended_skills": [
+                                          "making-academic-presentations"
+                                    ]
+                              },
+                              {
+                                    "id": "promotion_generate_narration",
+                                    "title": "Generate TTS audio for slide narration",
+                                    "description": "Generate one audio track per slide and prepare inputs for demo-video assembly.",
+                                    "taskType": "narration",
+                                    "recommended_skills": [
+                                          "making-academic-presentations"
+                                    ]
+                              }
+                        ],
+                        "recommended_skills": [
+                              "making-academic-presentations"
+                        ]
+                  }
+            }
+      }
+}
