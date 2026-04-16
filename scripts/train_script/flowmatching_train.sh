@@ -1,5 +1,0 @@
-#python setup.py install
-python basicsr/train.py -opt /home/ybb/Project/BasicDFIR/options/train/Flowmatching/train_comparable_srmodel_unet_B8_SRx4_P64_scratch.yml
-#train_comparable_srmodel_unet_B8_SRx4_P64_scratch.yml
-#train_flowmatching_unet_B8_SRx8_P32_scratch.yml
-#train_flowmatching_unet_B8_SRx4_P64_scratch.yml

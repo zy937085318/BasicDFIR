@@ -1,1 +1,0 @@
-python basicsr/train.py -opt options/train/JiT/train_JiT_unet_B8_SRx4_P64_scratch.yml
