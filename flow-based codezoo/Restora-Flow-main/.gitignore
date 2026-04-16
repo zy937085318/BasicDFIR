@@ -1,5 +1,0 @@
-.idea/
-__pycache__/
-*.pyc
-/natural/model_checkpoints/
-/medical/model_checkpoints/
