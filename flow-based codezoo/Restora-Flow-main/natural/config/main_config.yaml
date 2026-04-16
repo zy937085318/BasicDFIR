@@ -1,0 +1,24 @@
+EVAL:
+    dataset: 'celeba'               # dataset name (celeba, afhq_cat, coco)
+    model_type: 'ot'                # model (ot, ddpm)
+    root: './'                      # root directory for the experiment
+    seed: 0                         # random seed
+    batch_size_train: 64            # batch size for training (128 for CelebA, 64 for AFHQ-Cat and COCO)
+    num_epoch: 1000                 # number of epochs for training (200 for CelebA, 400 for AFHQ-Cat, 300 for COCO)
+    lr: 0.0001                      # learning rate for training
+    latent: 'gaussian'              # latent distribution (gaussian)
+    train: False                    # train the flow model if True
+    finetune: False                 # finetuning of the model
+    eval: True                      # evaluate the flow model if True
+    eval_split: 'test'               # data used for evaluation (test) - val for coco
+    problem: 'denoising'           # inverse problem type (denoising, box_inpainting, superresolution, random_inpainting)
+    method: 'restora_flow'                  # method for solving inverse problem (ot_ode, flow_priors, d_flow, pnp_flow, restora_flow, repaint, ddnm)
+    max_batch: 25                    # number of batches of size 4 for evaluation
+    batch_size_ip: 4
+    noise_type: 'gaussian'
+    sigma_y: 0.01                   # measurement noise level (0.2 for denoising, 0.01 for all other tasks)
+    p_value: 0.7                    # used for random inpainting
+    sf: 2                           # used for superresolution (2 for 128-res experiments, 4 for 256-res experiments)
+    mask_size_x: 40                 # used for box inpainting (40 for 128-res experiments, 80 for 256-res experiments)
+    mask_size_y: 40
+    compute_metrics: True

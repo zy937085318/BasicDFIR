@@ -1,0 +1,142 @@
+# MPv2_3g: Spectral Alpha Modulation (P3 iteration)
+# 50K iterations, controlled ablation experiment
+name: MPv2_3g_JiTv2_SRx4_P64_50k
+model_type: JiTv2Model
+scale: 4
+num_gpu: 1
+manual_seed: 0
+description: 'P3 iter: Spectral alpha modulation (HF energy gate), 50K iter ablation'
+
+# dataset and data loader settings
+datasets:
+  train:
+    task: SR
+    name: DF2K
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DF2K/train_HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DF2K/train_LR_bicubic/X4
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+    gt_size: 256
+    use_hflip: true
+    use_rot: true
+
+    use_shuffle: true
+    num_worker_per_gpu: 6
+    batch_size_per_gpu: 8
+    dataset_enlarge_ratio: 1
+    prefetch_mode: cuda
+    pin_memory: True
+    persistent_workers: True
+
+  val_1:
+    name: Set5
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+  val_2:
+    name: Set14
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+# network structures
+network_g:
+  type: MPv2_3g_arch
+  upscale: 1
+  in_chans: 3
+  out_chans: 3
+  img_size: 256
+  embed_dim: 96
+  depths: [6, 6, 6, 6]
+  num_heads: [6, 6, 6, 6]
+  window_size: 8
+  dim_ffn_td: 16
+  category_size: 128
+  num_tokens: 64
+  reducted_dim: 4
+  convffn_kernel_size: 5
+  img_range: 1.
+  mlp_ratio: 2
+  upsampler: ''
+  resi_connection: '1conv'
+  use_checkpoint: false
+  temb_ch: 96
+  embedding_dim: 96
+  downscale: 4
+  lora_rank: 8
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+
+# training settings
+train:
+  use_fp16: true
+  ema_decay: 0.999
+  optim_g:
+    type: AdamW
+    lr: !!float 2e-4
+    weight_decay: 0
+    betas: [0.9, 0.9]
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [25000, 40000, 45000, 47500]
+    gamma: 0.5
+
+  total_iter: 50000
+  warmup_iter: -1
+
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+
+# validation settings
+val:
+  val_freq: !!float 5e3
+  save_img: false
+  pbar: true
+  sample_step: 5
+  tile_mode: true
+
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 4
+      test_y_channel: true
+    ssim:
+      type: calculate_ssim
+      crop_border: 4
+      test_y_channel: true
+    lpips:
+      type: calculate_lpips
+      crop_border: 4
+      test_y_channel: false
+      model: alex
+
+# logging settings
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 5e4
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500

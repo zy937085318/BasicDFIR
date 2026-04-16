@@ -1,0 +1,19 @@
+METHOD:
+    steps_pnp: 100
+    lr_pnp: 1.0
+    gamma_style: 'alpha_1_minus_t'
+    num_samples: 5
+    alpha: 0.5
+
+
+# CelebA:
+# denoising: alpha = 0.8, steps_pnp = 100
+# box inpainting: alpha = 0.5, steps_pnp = 100
+# superresolution: alpha = 0.3, steps_pnp = 100
+# random inpainting: alpha = 0.01, steps_pnp = 100
+
+# AFHQ-Cat:
+# denoising: alpha = 0.8, steps_pnp = 100
+# box inpainting: alpha = 0.5, steps_pnp = 100
+# superresolution: alpha = 0.01, steps_pnp = 500
+# random inpainting: alpha = 0.01, steps_pnp = 200

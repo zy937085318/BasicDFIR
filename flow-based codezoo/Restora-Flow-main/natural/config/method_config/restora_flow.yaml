@@ -1,0 +1,16 @@
+METHOD:
+    steps_ode: 64
+    correction_steps: 1
+
+
+# CelebA and COCO:
+# denoising: steps_ode = 64
+# box inpainting: steps_ode = 64, correction_steps = 1
+# superresolution: steps_ode = 128, correction_steps = 1
+# random inpainting: steps_ode = 128, correction_steps = 1
+
+# AFHQ-Cat:
+# denoising: steps_ode = 64
+# box inpainting: steps_ode = 64, correction_steps = 1
+# superresolution: steps_ode = 256, correction_steps = 1
+# random inpainting: steps_ode = 128, correction_steps = 1

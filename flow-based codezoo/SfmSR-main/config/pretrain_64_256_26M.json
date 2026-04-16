@@ -1,0 +1,19 @@
+{
+    "train_type":"pretrain_fmow",
+    "model":{
+        "net" : "DiTTransformer2DModel",
+        "sample_size": 256, 
+        "in_channels": 3,
+        "patch_size": 2,
+        "num_layers": 8,
+        "attention_head_dim": 24 ,
+        "params": "17M"
+    },
+    "datasets":{
+        "datalist":["fmow/train",
+        "fmow/val",
+        "fmow/test",
+        "fmow/seq"
+        ]
+    }
+}

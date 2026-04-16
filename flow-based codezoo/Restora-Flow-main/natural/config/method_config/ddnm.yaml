@@ -1,0 +1,5 @@
+METHOD:
+    ddpm_timesteps: 250
+    sampling_steps: 100
+    jump_length: 1
+    jump_n_sample: 5

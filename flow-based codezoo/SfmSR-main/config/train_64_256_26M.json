@@ -1,0 +1,20 @@
+{
+    "train_type":"train",
+    "model":{
+        "net" : "DiTTransformer2DModel",
+        "sample_size": 256, 
+        "in_channels": 3,
+        "patch_size": 2,
+        "num_layers": 8,
+        "attention_head_dim": 24 ,
+        "params": "17M"
+    },
+
+    "datasets":{
+        "datalist":["Train_64_256/hr_256"],
+
+        "datalistlr":["Train_64_256/sr_64_256"
+
+    ]
+    }
+}

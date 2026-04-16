@@ -1,0 +1,62 @@
+input_resolution: 256
+
+default_sigma_y: 0.01
+
+sigma_overrides:
+  denoising: 0.08
+
+problems:
+  denoising:
+    args: {}
+
+  box_inpainting:
+    args: [128, 128]
+
+  random_inpainting:
+    args: [0.7]
+
+  superresolution:
+    args: [2]
+
+  occlusion_removal:
+    args: {}
+
+
+methods:
+  RePaint:
+    default_params: [50, 10, 10]
+    overrides: {}
+
+  DDNM:
+    default_params: [50, 1, 5]
+    overrides: {}
+
+  OT-ODE:
+    default_params: [100, 0.1, "gamma_t"]
+    overrides:
+      denoising: [100, 0.3, "gamma_t"]
+      superresolution: [100, 0.1, "constant"]
+
+  Flow-Priors:
+    default_params: [10000, 0.01]
+    overrides:
+      denoising: [100, 0.01]
+      superresolution: [10000, 0.1]
+
+  D-Flow:
+    default_params: [0.01, 0.1, 9]
+    overrides:
+      denoising: [0.001, 0.1, 3]
+      superresolution: [0.001, 0.1, 20]
+
+  PnP-Flow:
+    default_params: [100, 1.0, 0.5]
+    overrides:
+      denoising: [100, 1.0, 0.8]
+      superresolution: [500, 1.0, 0.01]
+
+  Restora-Flow:
+    default_params: [64, 1]
+    overrides:
+      box_inpainting: [32, 1]
+      occlusion_removal: [32, 1]

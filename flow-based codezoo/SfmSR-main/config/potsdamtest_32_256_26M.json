@@ -1,0 +1,19 @@
+{
+    "train_type":"test",
+    "model":{
+        "net" : "DiTTransformer2DModel",
+        "sample_size": 256, 
+        "in_channels": 3,
+        "patch_size": 2,
+        "num_layers": 8,
+        "attention_head_dim": 24 ,
+        "params": "17M"
+    },
+
+    "datasets":{
+        "datalist":"PotsdamTest32_256/hr_256",
+        "datalistlr":"PotsdamTest32_256/sr_32_256"
+        
+        
+    }
+}

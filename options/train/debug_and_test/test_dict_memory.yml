@@ -1,0 +1,110 @@
+# Test 6: Dictionary Memory only
+name: train_DinoMemUNet_tiny_dict_memory_SRx4_50k
+model_type: SRUNetModel
+scale: 4
+num_gpu: 1
+manual_seed: 0
+
+network_g:
+  type: ConvNeXtUNetMemory
+  input_channels: 3
+  img_size: 256
+  output_channels: 3
+  encoder_type: tiny
+  drop_path_rate: 0.0
+  num_res_blocks: 2
+  attn_resolutions: [16, 8]
+  dropout: 0.0
+  resamp_with_conv: true
+  meanflow: false
+  freeze_backbone: false
+  enable_hopfield: false
+  enable_convlstm: false
+  enable_token_dict: false
+  enable_mrm: false
+  enable_memory_bank: false
+  enable_dict_memory: true
+  enable_coarse_to_fine: false
+
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+
+train:
+  ema_decay: 0.999
+  optim_g:
+    type: Adam
+    lr: !!float 2e-4
+    weight_decay: 0
+    betas: [0.9, 0.99]
+  scheduler:
+    type: MultiStepLR
+    milestones: [25000, 40000, 45000, 47500]
+    gamma: 0.5
+  total_iter: 50000
+  warmup_iter: -1
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+
+val:
+  val_freq: !!float 5e3
+  save_img: true
+  pbar: true
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 2
+      test_y_channel: true
+    ssim:
+      type: calculate_ssim
+      crop_border: 2
+      test_y_channel: true
+    lpips:
+      type: calculate_lpips
+      model: 'alex'
+
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 5e3
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+datasets:
+  train:
+    task: SR
+    name: DF2K
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/DF2K/train_HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/DF2K/train_LR_bicubic/X4
+    filename_tmpl: '{}x4'
+    io_backend:
+      type: disk
+    gt_size: 256
+    use_hflip: true
+    use_rot: true
+    use_shuffle: true
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
+    dataset_enlarge_ratio: 100
+    prefetch_mode: ~
+  val_1:
+    name: Set5
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set5/image_SRF_4/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+  val_2:
+    name: Set14
+    type: PairedImageDataset
+    dataroot_gt: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/HR
+    dataroot_lq: /8T1/dataset/SRDataset/ImageSR/test/Set14/image_SRF_4/LR
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk

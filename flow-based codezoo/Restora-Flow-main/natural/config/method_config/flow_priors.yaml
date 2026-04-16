@@ -1,0 +1,19 @@
+METHOD:
+    start_time: 0.0
+    K: 1
+    N: 100
+    lmbda: 10000
+    eta: 0.01
+
+
+# CelebA:
+# denoising: lmbda = 100, eta = 0.01
+# box inpainting: lmbda = 10000, eta = 0.01
+# superresolution: lmbda = 10000, eta = 0.1
+# random inpainting: lmbda = 10000, eta = 0.01
+
+# AFHQ-Cat:
+# denoising: lmbda = 100, eta = 0.01
+# box inpainting: lmbda = 10000, eta = 0.01
+# superresolution: lmbda = 10000, eta = 0.1
+# random inpainting: lmbda = 10000, eta = 0.01

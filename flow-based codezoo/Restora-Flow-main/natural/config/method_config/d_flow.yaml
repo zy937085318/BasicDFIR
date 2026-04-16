@@ -1,0 +1,20 @@
+METHOD:
+    steps_euler: 6
+    lmbda: 0.001
+    alpha: 0.1
+    max_iter: 20
+    LBFGS_iter: 9
+    start_time: 0.0
+
+
+# CelebA:
+# denoising: lmbda = 0.001, alpha=0.1, LBFGS_iter = 3
+# box inpainting: lmbda = 0.001, alpha=0.1, LBFGS_iter = 9
+# superresolution: lmbda = 0.001, alpha=0.1, LBFGS_iter = 10
+# random inpainting: lmbda = 0.01, alpha=0.1, LBFGS_iter = 20
+
+# AFHQ-Cat:
+# denoising: lmbda = 0.001, alpha=0.1, LBFGS_iter = 3
+# box inpainting: lmbda=0.01, alpha = 0.1, LBFGS_iter=9
+# superresolution: lmbda=0.001, alpha = 0.1, LBFGS_iter=20
+# random inpainting: lmbda=0.001, alpha = 0.1, LBFGS_iter=20

@@ -1,0 +1,59 @@
+# Configuration for Pixel MeanFlow (pMF) - DiT-B/16
+# Reference: Lu et al. - 2026 - One-step Latent-free Image Generation with Pixel Mean Flows
+# Matches Model Architecture from Table 1 and Section 3.2
+
+model:
+  image_size: 256
+  patch_size: 16
+  in_channels: 3
+  hidden_size: 768         # DiT-B standard
+  depth: 12                # DiT-B standard
+  num_heads: 12            # DiT-B standard
+  mlp_ratio: 4.0           # Standard Transformer setting
+  class_dropout_prob: 0.1  # Section 3.2
+  num_classes: 1001        # 1000 ImageNet classes + 1 null token for CFG
+  learn_sigma: false       # pMF predicts velocity, not sigma
+
+training:
+  global_batch_size: 1024  # Table 1
+  micro_batch_size: 64     # Adjusted for single GPU memory (Total=1024 requires accumulation or multi-gpu)
+  learning_rate: 1.0e-4    # Table 1 (AdamW part)
+  weight_decay: 0.01       # Standard DiT setting
+  num_epochs: 160          # Table 1
+  mixed_precision: "fp16"  # Section 3.2 (efficiency)
+  gradient_accumulation_steps: 1 # Adjust based on GPU count to reach global_batch_size 1024
+  warmup_steps: 5000
+  warmup_ratio: 0.03
+  ema_decays: [0.999, 0.9999, 0.99999]
+
+pmf:
+  t_min: 0.0
+  t_max: 1.0
+  sampling_dist: "logit_normal" # Section 3.2 / Method
+  logit_normal_loc: 0.0         # Default heuristic
+  logit_normal_scale: 0.8       # Default heuristic
+  uniform_prob: 0.1             # Mixture strategy
+  cfg_training: true
+  cfg_scale_min: 1.0
+  cfg_scale_max: 7.0
+
+optimizer:
+  use_muon: true
+  muon_lr: 0.02
+  muon_momentum: 0.95
+  adam_lr: 1.0e-4
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+
+loss:
+  lambda_perc: 1.0
+  perc_threshold: 0.6      # Section 3.2 (Time threshold for LPIPS)
+  lpips_weight: 0.4
+
+paths:
+  data_path: "/data2/private/huangcheng/data/imagenet-1k-256x256-modelscope"
+  output_dir: "results/pMF-B-16"
+  checkpoint_dir: "checkpoints/pMF-B-16"
+  log_dir: "logs/pMF-B-16"
+
+seed: 42 # Reproducibility
