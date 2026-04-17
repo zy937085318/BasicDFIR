@@ -1,0 +1,114 @@
+# ==================== Non-essential project files ====================
+flow-based codezoo/
+tests/
+test_scripts/
+colab/
+docs/
+datasets/
+inference/
+
+# Non-essential root files
+.readthedocs.yaml
+CITATION.cff
+LICENSE.txt
+MANIFEST.in
+VERSION
+instance.json
+说明.md
+
+# ==================== IDE / tool folders ====================
+.vscode/*
+*.DS_Store
+.idea/*
+.cursor/*
+.claude/*
+.agent/*
+.gemini/*
+.minimax/*
+.trae/*
+.pipline/*
+.claude/
+.agents/
+.pipeline/
+
+# ==================== Runtime / output folders ====================
+experiments/*
+results/*
+tb_logger/*
+wandb/*
+tmp/*
+claude-501/*
+dinov3-main/*
+
+# ==================== Ignored files ====================
+version.py
+scripts/__init__.py
+
+# ==================== Ignored file types ====================
+*.html
+*.png
+*.jpeg
+*.jpg
+*.gif
+*.pth
+*.zip
+*.md
+!说明.md
+!README.md
+test_*.py
+
+# ==================== Python ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
