@@ -6,6 +6,7 @@ colab/
 docs/
 datasets/
 inference/
+basicsr/archs/MyProposal/history/
 
 # Non-essential root files
 .readthedocs.yaml
